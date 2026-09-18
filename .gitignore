@@ -10,3 +10,8 @@ dist/
 *.egg-info/
 .venv/
 venv/
+node_modules/
+package-lock.json
+package.json
+railway-check.png
+_check_railway.mjs
