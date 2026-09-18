@@ -24,7 +24,9 @@ Phím:
 """
 
 import array
+import asyncio
 import math
+import os
 import random
 import sys
 
@@ -151,8 +153,19 @@ def cham_4_goc(x, y, w, h, kiem_tuong):
     return False
 
 
+_THU_MUC = os.path.dirname(os.path.abspath(__file__))
+_FONT_THUONG = os.path.join(_THU_MUC, "fonts", "NotoSans-Regular.ttf")
+_FONT_DAM = os.path.join(_THU_MUC, "fonts", "NotoSans-Bold.ttf")
+
+
 def tao_font(co, dam=False):
-    """Font có dấu tiếng Việt trên Windows (Thonny)."""
+    """Font có dấu tiếng Việt (file TTF cho web, SysFont trên Thonny)."""
+    for path in ((_FONT_DAM if dam else _FONT_THUONG), _FONT_THUONG):
+        if path and os.path.isfile(path):
+            try:
+                return pygame.font.Font(path, co)
+            except Exception:
+                pass
     for ten in ("Tahoma", "Segoe UI", "Arial", "Verdana"):
         try:
             return pygame.font.SysFont(ten, co, bold=dam)
@@ -2070,7 +2083,10 @@ class UI:
 # =============================================================================
 class Game:
     def __init__(self):
-        pygame.mixer.pre_init(SAMPLE_RATE, -16, 1, 512)
+        try:
+            pygame.mixer.pre_init(SAMPLE_RATE, -16, 1, 512)
+        except Exception:
+            pass
         pygame.init()
         try:
             pygame.mixer.init(SAMPLE_RATE, -16, 1, 512)
@@ -2467,7 +2483,7 @@ class Game:
             elif k == pygame.K_ESCAPE:
                 self.trang_thai = MENU
 
-    def chay_game(self):
+    async def chay_game(self):
         print("Tần Số Trắng — đang chạy. Đóng cửa sổ hoặc ESC để thoát.")
         self._bi_san = False
         while self.chay:
@@ -2511,12 +2527,13 @@ class Game:
                 self.ui.ve_thua(self.man)
 
             pygame.display.flip()
+            await asyncio.sleep(0)
 
         pygame.quit()
 
 
 def main():
-    Game().chay_game()
+    asyncio.run(Game().chay_game())
 
 
 if __name__ == "__main__":

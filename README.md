@@ -12,6 +12,10 @@ Hoặc double-click `CHOI.bat`.
 
 Cửa sổ: **800×600**, **60 FPS**.
 
+## Chơi trên web (Railway)
+
+Bản trình duyệt dùng cùng `game.py` (đóng gói pygbag). Mở link Railway, **bấm vào khung game** để bắt đầu (trình duyệt cần thao tác đó mới bật tiếng), rồi chơi bằng phím như bản desktop.
+
 ## Phím
 
 | Phím | Việc |

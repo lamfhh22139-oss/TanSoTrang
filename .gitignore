@@ -4,3 +4,9 @@ __pycache__/
 .DS_Store
 Thumbs.db
 _preview_*.png
+build/
+dist/
+.railway/
+*.egg-info/
+.venv/
+venv/

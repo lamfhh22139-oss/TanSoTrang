@@ -1,0 +1,11 @@
+.git
+.github
+.railway
+__pycache__
+*.pyc
+build
+dist
+CHOI.bat
+*.egg-info
+.venv
+venv
