@@ -13,14 +13,14 @@ Cách chạy:
          (không dùng file mp3/wav).
 
 Phím:
-    WASD     Di chuyển
-    SHIFT    Nín thở / rón rén (chậm hơn, khó bị quái nghe)
-    SPACE    Đổi tần số FM ↔ AM (chế độ dò: băng hiện mờ)
-    ENTER    Menu → cốt truyện → vào game
-    E        Mở Hộp An Toàn (màn 3)
-    ENTER    Bắt đầu / qua màn
-    R        Chơi lại (khi thua)
-    ESC      Về menu / thoát menu
+    WASD / mũi tên   Di chuyển
+    SHIFT            Chạy (tốn thể lực, quái nghe xa hơn)
+    Q                Nín thở / rón rén (tốn thể lực, khó bị nghe)
+    SPACE            Đổi tần số FM ↔ AM (chế độ dò: băng hiện mờ)
+    ENTER            Menu → cốt truyện → vào game
+    E                Mở Hộp An Toàn (màn 3)
+    R                Chơi lại (khi thua)
+    ESC              Về menu / thoát menu
 """
 
 import array
@@ -47,21 +47,29 @@ PIN_NHAT = 42.0                     # Lượng pin hồi khi nhặt viên pin
 PIN_TOI_THIEU_AM = 4.0              # Dưới mức này không tự bật AM được
 
 TOC_DO = 150.0                      # Tốc độ đi bình thường (px/s)
-TOC_DO_REN = 58.0                   # Khi giữ SHIFT
+TOC_DO_CHAY = 238.0                 # SHIFT — nhanh hơn quái đuổi, nhưng ồn
+TOC_DO_REN = 58.0                   # Q nín thở
 TOC_DO_HET_PIN = 62.0               # Bị làm chậm khi hết pin
 TOC_DO_QUAI_TUAN = 48.0
-TOC_DO_QUAI_DUOI = 168.0            # Nhanh hơn đi bộ → phải nín thở hoặc nhảy FM
+TOC_DO_QUAI_DUOI = 168.0            # Nhanh hơn đi bộ → phải chạy hoặc nhảy FM
 TOC_DO_QUAI_LAO = 420.0             # Cưỡng chế AM: lao tới giết ngay
 
-BAN_KINH_NGHE = 118.0               # Quái nghe thấy nếu đi không SHIFT
-BAN_KINH_REN = 30.0                 # Khi đang rón rén
+BAN_KINH_NGHE = 118.0               # Quái nghe thấy nếu đi bộ
+BAN_KINH_CHAY = 178.0               # Chạy thì nghe rất xa
+BAN_KINH_REN = 30.0                 # Khi đang nín thở (Q)
 BAN_KINH_NHAT = 22.0                # Bán kính nhặt vật phẩm
 BAN_KINH_TIN_HIEU = 280.0           # Màn 1: tầm dò băng cassette ẩn (map rộng)
+
+THE_LUC_TOI_DA = 100.0
+THE_LUC_HAO_CHAY = 34.0             # Hết sprint ~3s
+THE_LUC_HAO_NIN = 15.5              # Nín được ~6s — đủ 4s cưỡng chế AM nếu đầy
+THE_LUC_HOI = 26.0
+SO_HAI_TOI_DA = 100.0
 
 CUONG_CHE_MIN = 12.0                # Màn 3: chu kỳ sự cố đài (giây)
 CUONG_CHE_MAX = 15.0
 CUONG_CHE_KEO_DAI = 4.0             # Thời gian bị nhốt trong AM
-CUONG_CHE_AN_HAN = 0.40             # Chừa một nhịp để kịp giữ SHIFT
+CUONG_CHE_AN_HAN = 0.40             # Chừa một nhịp để kịp giữ Q
 
 # Màu sắc — FM (thế giới thực, đèn huỳnh quang vàng-xám)
 MAU_NEN_FM = (18, 18, 16)
@@ -82,7 +90,7 @@ MENU, COT_TRUYEN, CHOI, JUMPSCARE, THANG, THUA, CHIEN_THANG = (
 TRANG_TRUYEN = (
     (
         "03:17  —  TRẠM PHÁT THANH 540",
-        "Bạn là kỹ thuật viên ca đêm cuối cùng còn nhận máy.\n"
+        "Bạn là bảo vệ ca đêm cuối cùng còn nhận máy.\n"
         "FM 88.8 im tiếng đã ba tuần. Lịch trực bị xóa sạch.\n"
         "Trên bàn: tách cà phê nguội của người ca trước\n"
         "và một mẩu giấy:  «Đừng trả lời tần số trắng.»",
@@ -99,13 +107,13 @@ TRANG_TRUYEN = (
         "AM không phải kênh dự phòng.\n"
         "Đó là một thế giới đè lên thế giới này.\n"
         "Tường trở thành lối. Lối trở thành tường.\n"
-        "Những thứ đầu-đài đi trong nhiễu — mù, đói tiếng động.",
+        "The Void đi trong nhiễu — không mặt, chỉ lỗ. Mù, đói tiếng.",
     ),
     (
         "QUY TẮC SỐNG SÓT",
         "SPACE  —  nhảy FM (an toàn) / AM (chế độ dò).\n"
         "Ở AM, băng cassette hiện bóng mờ. Đứng lên là nhặt.\n"
-        "SHIFT  —  nín thở. Đi không SHIFT là bị săn.\n"
+        "Q  nín thở.  SHIFT  chạy (ồn, tốn thể lực).\n"
         "Nhặt đủ 3 băng, về Trạm phát thanh, rồi TẮT ĐÀI.",
     ),
 )
@@ -166,192 +174,273 @@ def _poly(diem, ox=0, oy=0):
 
 def ve_quai_am(man, cx, cy, scale, t, trang_thai, huong_x=1, bien_the=0, nhieu=True):
     """
-    Bóng tần số AM: đầu đài/CRT méo, màn hình nhiễu, mắt mù phát sáng,
-    thân gù, tay vuốt. Vẽ bằng pygame.draw — không dùng ảnh.
-    scale≈1.7 trong game; jumpscare dùng scale lớn.
+    Thực thể The Void: thân đen thượt như lỗ thủng không gian, đầu là
+    nhật thực tần số (vành sáng, lỗ đen). Không mắt, không miệng.
+    Mù, hút tiếng động. pygame.draw, không dùng ảnh.
+    scale≈2.0 trong game; jumpscare dùng scale lớn.
     """
     s = float(scale)
     cx, cy = float(cx), float(cy)
     fx = 1 if huong_x >= 0 else -1
     chase = trang_thai in (Enemy.CHASE, Enemy.RUSH, "chase", "rush")
     rush = trang_thai in (Enemy.RUSH, "rush")
-    nhip = t * (20.0 if rush else 12.0 if chase else 6.0)
-    giut = math.sin(t * 29.0) * (2.0 if rush else 0.8) * s
-    cx += giut * 0.4 * fx
-    lean = (4.0 if chase else 1.8) * s * fx
+    chi_tiet = s >= 2.6
+    nhip = t * (18.0 if rush else 11.0 if chase else 5.0)
+    cx += math.sin(t * 27.0) * (1.6 if rush else 0.55) * s * 0.3 * fx
+    lean = (3.6 if rush else 2.2 if chase else 0.8) * s * fx
 
-    mau_kim = (22, 14, 18) if not rush else (40, 6, 10)
-    mau_vien = (110, 70, 78) if chase else (86, 78, 88)
-    mau_man = (18, 6, 10) if not chase else (48, 0, 6)
-    nhap_mat = 0.65 + 0.35 * (0.5 + 0.5 * math.sin(t * 4.5))
+    mau_than = (8, 4, 12) if not chase else (14, 2, 6)
+    mau_vien = (32, 26, 40) if not chase else (58, 14, 22)
+    nhip_lo = 0.82 + 0.18 * (0.5 + 0.5 * math.sin(t * (8.0 if chase else 2.8)))
     if chase:
-        mau_mat = (255, 72, 58)
+        mau_vong = (int(255 * nhip_lo), int(62 * nhip_lo), int(48 * nhip_lo))
     else:
-        mau_mat = (int(210 * nhap_mat), int(220 * nhap_mat), int(235 * nhap_mat))
+        mau_vong = (int(198 * nhip_lo), int(204 * nhip_lo), int(214 * nhip_lo))
+    day_nhe = max(1, int(min(s, 2.4) * 1.35))
 
-    # Bóng chân + hào quang
-    pygame.draw.ellipse(
-        man, (0, 0, 0),
-        (int(cx - 12 * s), int(cy + 14 * s), int(24 * s), int(7 * s)),
-    )
-    if chase:
-        pygame.draw.circle(
-            man, (90, 0, 10) if rush else (55, 0, 8),
-            (int(cx), int(cy)),
-            int((20 + 5 * math.sin(t * 8)) * s),
-            max(1, int(s)),
-        )
+    # Đầu cao, thân thượt — chân vẫn quanh cy+21s để khớp hitbox
+    hx = cx + lean * 0.7
+    hy = cy - 30 * s
+    dau_w = 7.4 * s
+    dau_h = 8.6 * s
 
-    def ve_dau_dai(ox, oy, mau_vo, mau_khung):
-        """Đầu hình đài/CRT — khối nhận diện chính."""
-        hw, hh = 11.5 * s, 10.5 * s
-        hx = cx + lean + ox - hw
-        hy = cy - 22 * s + oy
-        pygame.draw.rect(man, mau_vo, (int(hx), int(hy), int(hw * 2), int(hh * 2)))
-        pygame.draw.rect(man, mau_khung, (int(hx), int(hy), int(hw * 2), int(hh * 2)), max(1, int(1.4 * s)))
-        # Núm xoay hai bên
-        pygame.draw.circle(man, (160, 150, 140), (int(hx - 1.2 * s), int(hy + hh)), max(2, int(2.0 * s)))
-        pygame.draw.circle(man, (160, 150, 140), (int(hx + hw * 2 + 1.2 * s), int(hy + hh * 0.7)), max(2, int(1.7 * s)))
-        # Màn hình lõm
-        inset = 2.2 * s
-        man_r = pygame.Rect(
-            int(hx + inset), int(hy + inset),
-            int(hw * 2 - inset * 2), int(hh * 2 - inset * 2.4),
-        )
-        pygame.draw.rect(man, mau_man, man_r)
-        pygame.draw.rect(man, (40, 20, 24), man_r, 1)
-        # Sọc nhiễu trên màn
-        n_soc = 4 if s < 2 else 7
-        for i in range(n_soc):
-            yy = man_r.y + int((i + 0.4) * man_r.h / n_soc) + int(math.sin(t * 11 + i) * s)
-            col = (70, 16, 20) if chase else (50, 48, 52)
-            pygame.draw.line(man, col, (man_r.x + 1, yy), (man_r.right - 2, yy), 1)
-        return man_r
+    def _i(v):
+        return int(round(v))
 
-    # Lệch RGB của cái đầu
-    if nhieu:
-        ve_dau_dai(-2.4 * s, 0, (110, 16, 24), (160, 40, 40))
-        ve_dau_dai(2.2 * s, 0.4 * s, (16, 40, 80), (40, 90, 140))
+    def ve_voi(x0, y0, goc, dai, pha, mau, day0):
+        n = 5 if chi_tiet else 4
+        px, py = x0, y0
+        for i in range(1, n + 1):
+            k = i / float(n)
+            go = goc + math.sin(pha + k * 3.8) * (0.5 + 0.4 * k)
+            nx = x0 + math.cos(go) * dai * k
+            ny = y0 + math.sin(go) * dai * k
+            pygame.draw.line(
+                man, mau, (_i(px), _i(py)), (_i(nx), _i(ny)),
+                max(1, int(day0 * (1.0 - k * 0.8))),
+            )
+            px, py = nx, ny
 
-    man_r = ve_dau_dai(0, 0, mau_kim, mau_vien)
-
-    # Ăng-ten
-    ax = man_r.centerx + int(2 * s * fx)
-    ay = man_r.y
-    anten = ((-5.5 * s, -8.5 * s), (6.0 * s, -10.5 * s))
-    if bien_the == 2:
-        anten = anten + ((0.5 * s, -12.5 * s),)
-    for dx, dy in anten:
-        pygame.draw.line(
-            man, (190, 190, 200),
-            (ax, ay), (int(ax + dx + 2 * s * fx), int(ay + dy)),
-            max(1, int(1.3 * s)),
-        )
-        pygame.draw.circle(
-            man, (255, 50, 50) if chase else (220, 220, 230),
-            (int(ax + dx + 2 * s * fx), int(ay + dy)),
-            max(2, int(1.8 * s)),
-        )
-
-    # Mắt mù trên màn hình (to, dễ đọc)
-    def ve_mat(ex, ey, rx, ry):
-        if chase:
-            pygame.draw.circle(man, (200, 24, 24), (int(ex), int(ey)), int(max(rx, ry) + 2.4 * s))
-        pygame.draw.ellipse(man, mau_mat, (int(ex - rx), int(ey - ry), int(rx * 2), int(ry * 2)))
-        pygame.draw.line(
-            man, (20, 6, 8),
-            (int(ex - rx * 0.5), int(ey)), (int(ex + rx * 0.5), int(ey)),
-            max(1, int(s)),
-        )
-
-    mx = man_r.centerx + int(1.5 * s * fx)
-    my = man_r.y + int(man_r.h * 0.38)
-    rx, ry = 3.6 * s, 3.1 * s
-    ve_mat(mx - 4.6 * s, my, rx, ry)
-    ve_mat(mx + 4.8 * s, my - 0.4 * s, rx * 1.05, ry * 1.08)
-    if bien_the >= 1:
-        ve_mat(mx + 0.2 * s, my - 5.4 * s, 2.4 * s, 2.1 * s)
-
-    # Miệng trên màn
-    mieng_y = man_r.y + int(man_r.h * 0.72)
-    if chase:
-        mo = (5.5 if rush else 3.8) * s
-        ham = [
-            (mx - 5.5 * s, mieng_y),
-            (mx + 6.0 * s, mieng_y),
-            (mx + 2.0 * s, mieng_y + mo),
-            (mx - 2.2 * s, mieng_y + mo * 0.9),
-        ]
-        pygame.draw.polygon(man, (30, 0, 0), _poly(ham))
-        n_rang = 5 if s >= 1.4 else 3
-        for i in range(n_rang):
-            rx0 = mx - 4.2 * s + i * (8.4 * s / max(1, n_rang - 1))
+    def ve_siluet(ox, oy, mau, vien=None):
+        bx, by = cx + ox, cy + oy
+        buoc = math.sin(nhip) * (5.5 if chase else 3.2) * s
+        hong_y = by + 6.0 * s
+        for sign, kb, kd in ((-1, -0.3, 1.0), (1, 0.34, 0.97)):
+            x_h = bx + sign * 1.7 * s
+            gx = x_h + sign * 2.2 * s + buoc * kb
+            gy = hong_y + 8.5 * s
+            fx_ = gx + sign * 1.1 * s - buoc * kb * 0.35
+            fy = by + 21.5 * s * kd
+            day = max(2, day_nhe + 1)
+            pygame.draw.line(man, mau, (_i(x_h), _i(hong_y)), (_i(gx), _i(gy)), day + 1)
+            pygame.draw.line(man, mau, (_i(gx), _i(gy)), (_i(fx_), _i(fy)), day)
             pygame.draw.polygon(
-                man, (240, 230, 210),
+                man, mau,
                 [
-                    (int(rx0), int(mieng_y + 0.3 * s)),
-                    (int(rx0 + 1.4 * s), int(mieng_y + 0.3 * s)),
-                    (int(rx0 + 0.7 * s), int(mieng_y + 2.6 * s)),
+                    (_i(fx_ - 1.0 * s), _i(fy)),
+                    (_i(fx_ + 2.4 * s * sign), _i(fy + 0.5 * s)),
+                    (_i(fx_), _i(fy - 1.4 * s)),
                 ],
             )
-    else:
+        vai = 5.0 * s
+        than = [
+            (bx - vai + lean * 0.2, by - 15.5 * s),
+            (bx + vai + lean * 0.2, by - 15.5 * s),
+            (bx + 2.6 * s, by + 2.5 * s),
+            (bx + 1.8 * s, by + 7.0 * s),
+            (bx - 1.8 * s, by + 7.0 * s),
+            (bx - 2.6 * s, by + 2.5 * s),
+        ]
+        pygame.draw.polygon(man, mau, _poly(than))
+        if vien is not None:
+            pygame.draw.polygon(man, vien, _poly(than), 1)
         pygame.draw.line(
-            man, (90, 40, 48),
-            (int(mx - 4 * s), int(mieng_y)), (int(mx + 4.5 * s), int(mieng_y + 0.8 * s)),
-            max(1, int(1.2 * s)),
+            man, mau,
+            (_i(bx + lean * 0.35), _i(by - 15.5 * s)),
+            (_i(hx + ox), _i(hy + dau_h * 0.88)),
+            max(2, day_nhe),
         )
+        pygame.draw.ellipse(
+            man, mau,
+            (_i(hx + ox - dau_w), _i(hy + oy - dau_h), _i(dau_w * 2), _i(dau_h * 2)),
+        )
+        vai_y = by - 14.5 * s
+        dai_tay = 16.0 * s if chase else 15.0 * s
+        for sign in (-1, 1):
+            swing = math.sin(nhip + (0.0 if sign < 0 else 3.1)) * (4.4 if chase else 2.8) * s
+            toi = (2.4 * s if chase else 1.2 * s) * fx
+            x0 = bx + 4.6 * s * sign + lean * 0.3
+            y0 = vai_y
+            x1 = x0 + sign * 3.2 * s + toi * 0.35
+            y1 = y0 + 7.2 * s + swing * 0.28
+            x2 = x1 + sign * 1.6 * s + toi * 0.7
+            y2 = y0 + dai_tay * 0.72 + swing
+            day = max(2, day_nhe)
+            pygame.draw.line(man, mau, (_i(x0), _i(y0)), (_i(x1), _i(y1)), day + 1)
+            pygame.draw.line(man, mau, (_i(x1), _i(y1)), (_i(x2), _i(y2)), day)
+            pygame.draw.circle(man, mau, (_i(x2), _i(y2)), max(2, int(1.5 * s)))
 
-    # Thân gù mỏng
-    than = [
-        (cx - 4.5 * s + lean * 0.3, cy - 2 * s),
-        (cx + 4.5 * s + lean * 0.3, cy - 2 * s),
-        (cx + 3.5 * s, cy + 13 * s),
-        (cx - 3.5 * s, cy + 13 * s),
-    ]
-    pygame.draw.polygon(man, mau_kim, _poly(than))
-    pygame.draw.polygon(man, mau_vien, _poly(than), 1)
+    # Bóng + khói chân
+    pygame.draw.ellipse(
+        man, (0, 0, 0),
+        (_i(cx - 11 * s), _i(cy + 17 * s), _i(22 * s), _i(7 * s)),
+    )
     for i in range(3):
-        yy = cy + (1 + i * 3.4) * s
-        pygame.draw.line(
-            man, (50, 20, 24),
-            (int(cx - 3 * s), int(yy)), (int(cx + 3 * s), int(yy)), 1,
+        pygame.draw.ellipse(
+            man, (7, 4, 10),
+            (
+                _i(cx - 9 * s + i * 3.6 * s + math.sin(t * 2.1 + i) * 1.6 * s),
+                _i(cy + 15.5 * s),
+                _i((8 - i) * s),
+                _i(4.2 * s),
+            ),
+        )
+    # Tua rò từ vai — ngắn, không thành cần câu
+    n_voi = 3 if (chi_tiet or bien_the == 2 or chase) else 2
+    for i in range(n_voi):
+        goc = -2.35 + i * 0.95
+        dai = min((8 + (i % 2) * 2.5) * s, 16 + 3.2 * s)
+        ve_voi(
+            hx - 1.5 * s * fx, hy + 4 * s, goc, dai,
+            t * 2.8 + i,
+            (14, 8, 18) if not chase else (32, 4, 10),
+            max(1, day_nhe),
         )
 
-    # Chân cà nhắc
-    buoc = math.sin(nhip) * 5.0 * s
-    pygame.draw.line(man, mau_kim, (int(cx - 2.4 * s), int(cy + 13 * s)),
-                     (int(cx - 4.0 * s - buoc * 0.25), int(cy + 20 * s)), max(2, int(2.6 * s)))
-    pygame.draw.line(man, mau_kim, (int(cx + 2.2 * s), int(cy + 13 * s)),
-                     (int(cx + 4.4 * s + buoc * 0.3), int(cy + 19.5 * s)), max(2, int(2.6 * s)))
-    pygame.draw.circle(man, mau_kim, (int(cx - 4.0 * s - buoc * 0.25), int(cy + 20 * s)), max(2, int(2 * s)))
-    pygame.draw.circle(man, mau_kim, (int(cx + 4.4 * s + buoc * 0.3), int(cy + 19.5 * s)), max(2, int(2 * s)))
+    ve_siluet(0, 0, mau_than, mau_vien)
 
-    # Tay vuốt
-    vai_y = cy - 1.5 * s
+    # Sườn nứt (chỉ khi đuổi / jumpscare)
+    if chase or chi_tiet:
+        for i in range(3):
+            yy = cy - 11 * s + i * 3.4 * s
+            mo = (2.6 - i * 0.3) * s
+            pygame.draw.line(
+                man, (70, 16, 24) if chase else (28, 20, 36),
+                (_i(cx - mo + lean * 0.15), _i(yy)),
+                (_i(cx + mo * 0.35), _i(yy + 0.5 * s)),
+                1,
+            )
+
+    # Ngón tua
+    vai_y = cy - 14.5 * s
+    dai_tay = 16.0 * s if chase else 15.0 * s
     for sign in (-1, 1):
-        swing = math.sin(nhip + (0.0 if sign < 0 else 3.14)) * 5.5 * s
-        x0 = cx + 5.0 * s * sign + lean * 0.4
+        swing = math.sin(nhip + (0.0 if sign < 0 else 3.1)) * (4.4 if chase else 2.8) * s
+        toi = (2.4 * s if chase else 1.2 * s) * fx
+        x0 = cx + 4.6 * s * sign + lean * 0.3
         y0 = vai_y
-        x1 = x0 + sign * 6.5 * s + fx * 2.5 * s
-        y1 = y0 + 8 * s + swing * 0.3
-        x2 = x1 + sign * 4.0 * s + fx * 2.0 * s
-        y2 = y0 + 16 * s + swing
-        day = max(2, int(2.4 * s))
-        pygame.draw.line(man, mau_kim, (int(x0), int(y0)), (int(x1), int(y1)), day + 1)
-        pygame.draw.line(man, mau_kim, (int(x1), int(y1)), (int(x2), int(y2)), day)
+        x1 = x0 + sign * 3.2 * s + toi * 0.35
+        y1 = y0 + 7.2 * s + swing * 0.28
+        x2 = x1 + sign * 1.6 * s + toi * 0.7
+        y2 = y0 + dai_tay * 0.72 + swing
         co_so = math.atan2(y2 - y1, x2 - x1)
-        for k in (-0.55, 0.0, 0.55):
-            vx = x2 + math.cos(co_so + k) * 5.0 * s
-            vy = y2 + math.sin(co_so + k) * 5.0 * s
-            pygame.draw.line(man, mau_vien, (int(x2), int(y2)), (int(vx), int(vy)), max(1, int(1.3 * s)))
+        for k in range(4):
+            ve_voi(
+                x2, y2, co_so + (k - 1.5) * 0.38,
+                min((5.0 if chase else 3.8) * s, 10 + 2.2 * s),
+                t * 3.2 + sign + k,
+                mau_vien if not chase else (110, 22, 30),
+                max(1, int(min(s, 2.2))),
+            )
 
-    # Vệt static cắt mặt
-    if nhieu and (chase or random.random() < 0.22):
-        for _ in range(2 if not rush else 3):
-            yy = man_r.y + random.randint(2, max(3, man_r.h - 3))
+    # ----- Lỗ The Void: nhật thực trên đầu đen, không mặt nạ trắng -----
+    # Vành thịt xám tối quanh vết thương (không phải mặt cười)
+    pygame.draw.ellipse(
+        man, (54, 50, 58) if not chase else (62, 28, 32),
+        (
+            _i(hx - dau_w * 0.72),
+            _i(hy - dau_h * 0.72),
+            _i(dau_w * 1.44),
+            _i(dau_h * 1.44),
+        ),
+    )
+
+    lo_rx = (3.8 if not chase else 4.6 if not rush else 5.2) * s
+    lo_ry = (4.2 if not chase else 6.4 if not rush else 7.8) * s
+    if bien_the == 1:
+        lo_ry *= 1.12
+    vong = max(1, int(min(s, 2.2) * 0.9))
+    if nhieu:
+        pygame.draw.ellipse(
+            man, (110, 16, 22),
+            (_i(hx - lo_rx - 0.7 * s), _i(hy - lo_ry),
+             _i(lo_rx * 2), _i(lo_ry * 2)),
+            vong,
+        )
+        pygame.draw.ellipse(
+            man, (20, 40, 90),
+            (_i(hx - lo_rx + 0.7 * s), _i(hy - lo_ry),
+             _i(lo_rx * 2), _i(lo_ry * 2)),
+            vong,
+        )
+    pygame.draw.ellipse(
+        man, (0, 0, 0),
+        (_i(hx - lo_rx), _i(hy - lo_ry), _i(lo_rx * 2), _i(lo_ry * 2)),
+    )
+    pygame.draw.ellipse(
+        man, mau_vong,
+        (_i(hx - lo_rx), _i(hy - lo_ry), _i(lo_rx * 2), _i(lo_ry * 2)),
+        max(1, vong + 1),
+    )
+    if chase:
+        pygame.draw.ellipse(
+            man, (80, 6, 10),
+            (
+                _i(hx - lo_rx - 1.2 * s), _i(hy - lo_ry - 1.2 * s),
+                _i((lo_rx + 1.2 * s) * 2), _i((lo_ry + 1.2 * s) * 2),
+            ),
+            max(1, vong),
+        )
+    for k in (0.58, 0.28):
+        pygame.draw.ellipse(
+            man, (30, 10, 14) if chase else (22, 22, 28),
+            (
+                _i(hx - lo_rx * k), _i(hy - lo_ry * k),
+                _i(lo_rx * k * 2), _i(lo_ry * k * 2),
+            ),
+            1,
+        )
+    # Điểm sáng xa trong lỗ
+    pygame.draw.circle(
+        man, mau_vong,
+        (_i(hx + 0.4 * s * fx), _i(hy + 0.2 * s)),
+        max(1, int(0.55 * s)),
+    )
+
+    n_soc = 4 if s < 2.2 else (6 if chi_tiet else 5)
+    for i in range(n_soc):
+        yy = hy - lo_ry * 0.72 + i * (lo_ry * 1.4 / n_soc) + math.sin(t * 11 + i) * 0.5 * s
+        ny = (yy - hy) / max(1e-3, lo_ry)
+        if abs(ny) >= 0.88:
+            continue
+        half = lo_rx * math.sqrt(max(0.0, 1.0 - ny * ny)) * 0.82
+        col = (36, 6, 8) if chase else (30, 30, 36)
+        if int(t * 13 + i) % 4 == 0:
+            col = (140, 140, 148) if not chase else (160, 32, 36)
+        pygame.draw.line(man, col, (_i(hx - half), _i(yy)), (_i(hx + half), _i(yy)), 1)
+
+    if bien_the == 2:
+        for ox, oy, r in ((-4.4 * s, -5.0 * s, 1.4 * s), (4.6 * s, -3.6 * s, 1.2 * s)):
+            pygame.draw.circle(man, (0, 0, 0), (_i(hx + ox), _i(hy + oy)), max(2, int(r)))
+            pygame.draw.circle(man, mau_vong, (_i(hx + ox), _i(hy + oy)), max(2, int(r)), 1)
+
+    if bien_the == 1:
+        pygame.draw.line(
+            man, (10, 4, 8),
+            (_i(hx + 0.3 * s), _i(hy + lo_ry)),
+            (_i(hx + 0.8 * s * fx), _i(hy + dau_h * 0.88)),
+            max(1, vong),
+        )
+
+    if nhieu:
+        rng = random.Random(int(t * 9) ^ 0x3D)
+        for _ in range(4 if chi_tiet else 2):
+            ang = rng.random() * 6.28
+            rr = (dau_w + 1.4 * s) * (0.8 + 0.35 * rng.random())
             pygame.draw.rect(
-                man, (255, 255, 255),
-                (man_r.x, int(yy), man_r.w, max(1, int(0.8 * s))),
+                man, (180, 180, 186) if rng.random() > 0.45 else (48, 8, 12),
+                (_i(hx + math.cos(ang) * rr), _i(hy + math.sin(ang) * rr * 0.8),
+                 max(1, int(0.7 * s)), max(1, int(0.7 * s))),
             )
 
 
@@ -554,7 +643,7 @@ class Camera:
         self.x = 0.0
         self.y = 0.0
 
-    def cap_nhat(self, tx, ty, map_w, map_h):
+    def cap_nhat(self, tx, ty, map_w, map_h, rung=0.0):
         vw, vh = RONG, CAO - HUD_H
         self.x = tx - vw * 0.5
         self.y = ty - vh * 0.5
@@ -566,6 +655,9 @@ class Camera:
             self.y = (map_h - vh) * 0.5
         else:
             self.y = max(0.0, min(self.y, map_h - vh))
+        if rung > 0.05:
+            self.x += random.uniform(-rung, rung)
+            self.y += random.uniform(-rung, rung)
 
     def apply(self, x, y):
         """Đổi toạ độ thế giới → toạ độ màn hình (đã trừ HUD)."""
@@ -585,8 +677,8 @@ class Camera:
 # =============================================================================
 class Player:
     """
-    Nhân vật: WASD di chuyển, SHIFT rón rén, pin hao ở AM.
-    Kích thước nhỏ hơn 1 ô để luồn hành lang 1 tile.
+    Bảo vệ ca đêm: WASD/mũi tên đi, SHIFT chạy, Q nín thở.
+    Thể lực giới hạn; sợ hãi tăng khi The Void ở gần.
     """
 
     def __init__(self, x, y):
@@ -601,17 +693,24 @@ class Player:
         self.vy = 0.0
         self.huong = (0, 1)          # Vector hướng (logic)
         self.huong_mat = 2           # 0 lên, 1 phải, 2 xuống, 3 trái — để vẽ
-        self.ron_ren = False
+        self.ron_ren = False         # Nín thở (Q) — quái khó nghe
+        self.nin_tho = False
+        self.dang_chay = False
         self.dang_di = False
-        self.bam_di_chuyen = False   # Có nhấn WASD (kể cả khi kẹt tường)
+        self.bam_di_chuyen = False
         self.pin = PIN_TOI_DA
+        self.the_luc = THE_LUC_TOI_DA
+        self.so_hai = 0.0
         self.kiet_suc = False        # Hết pin → bị làm chậm cho đến khi nhặt pin
-        self.bang = 0                # Số băng cassette
-        self.ma_so = []              # Các con số mật mã đã nhặt (màn 3)
-        self.nhap_nhay = 0.0         # Timer flash khi đổi tần số
-        self.buoc_t = 0.0            # Pha chu kỳ đi bộ (giây)
-        self.tho = 0.0               # Nhịp thở khi đứng yên
-        self.nhay_mat = 2.4          # Đếm ngược chớp mắt
+        self.met = False             # Thể lực cạn — không chạy/nín được
+        self.tho_gat_t = 0.0         # Hết hơi: thở gấp, quái nghe thấy
+        self.bang = 0
+        self.ma_so = []
+        self.nhap_nhay = 0.0
+        self.buoc_t = 0.0
+        self.tho = 0.0
+        self.nhay_mat = 2.4
+        self.rung_t = 0.0            # Timer rung người khi sợ
 
     @property
     def cx(self):
@@ -625,10 +724,15 @@ class Player:
         return pygame.Rect(int(self.x), int(self.y), self.w, self.h)
 
     def cap_nhat(self, dt, keys, level, tan_so):
-        """Di chuyển + va chạm tường theo tần số hiện tại."""
-        self.ron_ren = keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]
-        dx = (1 if keys[pygame.K_d] else 0) - (1 if keys[pygame.K_a] else 0)
-        dy = (1 if keys[pygame.K_s] else 0) - (1 if keys[pygame.K_w] else 0)
+        """Di chuyển + thể lực + va chạm tường theo tần số hiện tại."""
+        bam_q = bool(keys[pygame.K_q])
+        bam_chay = bool(keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT])
+        dx = (1 if keys[pygame.K_d] or keys[pygame.K_RIGHT] else 0) - (
+            1 if keys[pygame.K_a] or keys[pygame.K_LEFT] else 0
+        )
+        dy = (1 if keys[pygame.K_s] or keys[pygame.K_DOWN] else 0) - (
+            1 if keys[pygame.K_w] or keys[pygame.K_UP] else 0
+        )
         self.bam_di_chuyen = dx != 0 or dy != 0
 
         if dx or dy:
@@ -638,16 +742,62 @@ class Player:
             else:
                 self.huong_mat = 2 if dy > 0 else 0
 
-        # Tốc độ phụ thuộc trạng thái: rón rén / hết pin / bình thường
+        if self.tho_gat_t > 0:
+            self.tho_gat_t = max(0.0, self.tho_gat_t - dt)
+
+        # Q ưu tiên hơn SHIFT — không vừa chạy vừa nín
+        muon_nin = bam_q and self.the_luc > 1.5 and self.tho_gat_t <= 0
+        muon_chay = (
+            bam_chay and self.bam_di_chuyen and not muon_nin
+            and self.the_luc > 5.0 and not self.kiet_suc
+        )
+
+        if muon_nin:
+            self.nin_tho = True
+            self.dang_chay = False
+            self.the_luc -= THE_LUC_HAO_NIN * dt
+        elif muon_chay:
+            self.nin_tho = False
+            self.dang_chay = True
+            self.the_luc -= THE_LUC_HAO_CHAY * dt
+        else:
+            self.dang_chay = False
+            self.nin_tho = False
+            hoi = THE_LUC_HOI
+            if self.bam_di_chuyen:
+                hoi *= 0.42
+            hoi *= 1.0 - 0.55 * (self.so_hai / SO_HAI_TOI_DA)
+            self.the_luc += hoi * dt
+
+        if self.the_luc <= 0.0:
+            self.the_luc = 0.0
+            if muon_nin or muon_chay:
+                self.tho_gat_t = 0.65
+            self.nin_tho = False
+            self.dang_chay = False
+            self.met = True
+        else:
+            self.the_luc = min(THE_LUC_TOI_DA, self.the_luc)
+            if self.the_luc > 18.0:
+                self.met = False
+
+        # ron_ren: chỉ khi nín thở thành công (không phải lúc thở gấp)
+        self.ron_ren = self.nin_tho and self.tho_gat_t <= 0.0
+
         if self.kiet_suc:
             spd = TOC_DO_HET_PIN
         elif self.ron_ren:
             spd = TOC_DO_REN
+        elif self.dang_chay:
+            spd = TOC_DO_CHAY
         else:
             spd = TOC_DO
+        if self.met or self.the_luc < 16.0:
+            spd *= 0.78
+        if self.so_hai > 80.0:
+            spd *= 0.88
 
         if dx and dy:
-            # Đi chéo không được nhanh hơn đi thẳng
             inv = 1.0 / math.sqrt(2.0)
             dx *= inv
             dy *= inv
@@ -658,7 +808,6 @@ class Player:
         def tuong(tx, ty):
             return level.la_tuong(tx, ty, tan_so)
 
-        # Tách trục X / Y để trượt dọc tường cho mượt
         nx = self.x + self.vx * dt
         if not cham_4_goc(nx, self.y, self.w, self.h, tuong):
             self.x = nx
@@ -666,30 +815,55 @@ class Player:
         if not cham_4_goc(self.x, ny, self.w, self.h, tuong):
             self.y = ny
 
-        # Kẹp trong bản đồ
         mw, mh = level.kich_thuoc_pixel()
         self.x = max(2.0, min(self.x, mw - self.w - 2.0))
         self.y = max(2.0, min(self.y, mh - self.h - 2.0))
 
-        # Chỉ tính "đang đi" khi thực sự bị dịch chuyển (không phải kẹt tường)
         self.dang_di = abs(self.vx) + abs(self.vy) > 1.0 and self.bam_di_chuyen
 
-        # Chu kỳ bước + thở + chớp mắt
         if self.dang_di:
-            if self.ron_ren or self.kiet_suc:
-                tan_buoc = 2.2
+            if self.ron_ren or self.kiet_suc or self.met:
+                tan_buoc = 2.1
+            elif self.dang_chay:
+                tan_buoc = 7.2
             else:
                 tan_buoc = 4.4
             self.buoc_t += dt * tan_buoc
         else:
             self.buoc_t = 0.0
-        self.tho += dt * 2.8
-        self.nhay_mat -= dt
+        nhip_tho = 2.6 + 3.5 * (self.so_hai / SO_HAI_TOI_DA)
+        if self.met or self.tho_gat_t > 0:
+            nhip_tho += 3.0
+        if self.nin_tho:
+            nhip_tho = 0.4
+        self.tho += dt * nhip_tho
+        self.rung_t += dt
+        self.nhay_mat -= dt * (1.0 + 1.4 * (self.so_hai / SO_HAI_TOI_DA))
         if self.nhay_mat < 0.0:
-            self.nhay_mat = random.uniform(2.2, 4.8)
+            self.nhay_mat = random.uniform(0.7, 2.8) if self.so_hai > 50 else random.uniform(2.2, 4.8)
 
         if self.nhap_nhay > 0:
             self.nhap_nhay -= dt
+
+    def cap_nhat_so_hai(self, dt, tan_so, bi_san, d_min, cuong_che):
+        """Sợ hãi: tăng ở AM / khi bị săn / gần The Void; hạ ở FM."""
+        if tan_so == AM:
+            self.so_hai += 9.0 * dt
+            if d_min < 170.0:
+                self.so_hai += (1.0 - d_min / 170.0) * 32.0 * dt
+            if bi_san:
+                self.so_hai += 24.0 * dt
+            if cuong_che:
+                self.so_hai += 16.0 * dt
+        else:
+            self.so_hai -= 15.0 * dt
+        if self.kiet_suc:
+            self.so_hai += 5.0 * dt
+        if self.the_luc < 12.0:
+            self.so_hai += 7.0 * dt
+        if self.tho_gat_t > 0:
+            self.so_hai += 10.0 * dt
+        self.so_hai = max(0.0, min(SO_HAI_TOI_DA, self.so_hai))
 
     def hao_pin(self, dt, tan_so):
         """Pin chỉ tụt khi đang ở tần số AM."""
@@ -708,32 +882,46 @@ class Player:
             self.kiet_suc = False
 
     def ve(self, man, camera, tan_so):
-        """Nhân vật 4 hướng, chu kỳ bước (chân/tay/bob), chớp mắt, rón rén."""
+        """Bảo vệ 4 hướng: mũ, huy hiệu, đai. Sợ / mệt hiện trên mặt và dáng."""
         sx, sy = camera.apply(self.x, self.y)
+        so = self.so_hai / SO_HAI_TOI_DA
+        met = self.met or self.the_luc < 22.0 or self.kiet_suc
+        so_man = so > 0.45
+
         if tan_so == AM:
-            than, da, radio = (210, 220, 230), (240, 244, 248), (180, 40, 40)
-            toc = (50, 48, 70)
+            ao, da = (78, 84, 98), (228, 226, 230)
         else:
-            than, da, radio = (70, 110, 150), (222, 198, 168), (40, 90, 160)
-            toc = (42, 38, 58)
-        if self.kiet_suc:
-            than = (110, 90, 70)
-        quan, giay = (32, 32, 40), (16, 16, 18)
-        chop = self.nhay_mat < 0.11
+            ao, da = (32, 44, 68), (222, 198, 168)
+        if met:
+            ao = (ao[0] + 18, ao[1] + 8, max(20, ao[2] - 10))
+        if so > 0.35:
+            k = min(1.0, (so - 0.35) / 0.65)
+            da = (
+                int(da[0] * (1 - k) + 210 * k),
+                int(da[1] * (1 - k) + 214 * k),
+                int(da[2] * (1 - k) + 222 * k),
+            )
+        quan, giay = (18, 22, 32), (12, 12, 14)
+        mu, gach = (16, 22, 36), (212, 176, 58)
+        radio = (36, 36, 40)
+        chop = self.nhay_mat < 0.12
 
         if self.dang_di:
+            amp = 5.2 if self.dang_chay else (2.2 if self.ron_ren else 3.6)
             swing = math.sin(self.buoc_t * 2.0 * math.pi)
-            bob = abs(swing) * (2.0 if not self.ron_ren else 0.8)
+            bob = abs(swing) * (2.4 if self.dang_chay else (0.7 if self.ron_ren else 1.6))
         else:
             swing = 0.0
-            bob = math.sin(self.tho) * 0.6
+            bob = math.sin(self.tho) * (1.15 if so > 0.5 or met else 0.55)
         sy = int(sy - bob)
-        if self.ron_ren:
-            sy += 3
+        if self.ron_ren or met:
+            sy += 3 if self.ron_ren else 2
+        if so > 0.4:
+            sx += int(math.sin(self.rung_t * (18 + 22 * so)) * (1 + 2 * so))
 
         pygame.draw.ellipse(man, (0, 0, 0), (sx - 1, sy + 15, 18, 6))
-        cl = int(round(swing * 4))
-        cr = int(round(-swing * 4))
+        cl = int(round(swing * (5 if self.dang_chay else 4)))
+        cr = int(round(-swing * (5 if self.dang_chay else 4)))
         tl = int(round(-swing * 3))
         tr = int(round(swing * 3))
         mat = self.huong_mat
@@ -745,71 +933,109 @@ class Player:
         def tay(x, y):
             pygame.draw.rect(man, da, (x, y, 3, 8))
 
+        def ao_nguc(x, y, w, h):
+            pygame.draw.rect(man, ao, (x, y, w, h))
+            pygame.draw.rect(man, (14, 16, 22), (x, y, w, h), 1)
+            pygame.draw.rect(man, gach, (x, y + h - 2, w, 2))  # đai
+
+        def mu_bao(x, y, w):
+            pygame.draw.rect(man, mu, (x - 1, y - 1, w + 2, 4))
+            pygame.draw.rect(man, gach, (x - 1, y + 2, w + 2, 1))
+
+        def mat_bao(fx, fy, doi=False):
+            """Mặt: sợ = mắt trắng to; mệt = mí sụp; nín thở = má phồng."""
+            if chop:
+                pygame.draw.line(man, (20, 20, 30), (fx, fy + 1), (fx + 2, fy + 1), 1)
+                if doi:
+                    pygame.draw.line(man, (20, 20, 30), (fx + 4, fy + 1), (fx + 6, fy + 1), 1)
+                return
+            if met and not so_man:
+                pygame.draw.line(man, (40, 32, 36), (fx, fy + 1), (fx + 2, fy + 1), 1)
+                if doi:
+                    pygame.draw.line(man, (40, 32, 36), (fx + 4, fy + 1), (fx + 6, fy + 1), 1)
+            elif so_man:
+                pygame.draw.rect(man, (240, 240, 246), (fx - 1, fy, 3, 3))
+                pygame.draw.rect(man, (18, 10, 14), (fx, fy + 1, 2, 2))
+                if doi:
+                    pygame.draw.rect(man, (240, 240, 246), (fx + 3, fy, 3, 3))
+                    pygame.draw.rect(man, (18, 10, 14), (fx + 4, fy + 1, 2, 2))
+            else:
+                pygame.draw.rect(man, (20, 20, 30), (fx, fy, 2, 2))
+                if doi:
+                    pygame.draw.rect(man, (20, 20, 30), (fx + 4, fy, 2, 2))
+            if so_man:
+                pygame.draw.line(man, (90, 40, 48), (fx + 1, fy + 4), (fx + 5, fy + 4), 1)
+            if self.nin_tho:
+                pygame.draw.circle(man, da, (fx + 3, fy + 4), 2)
+
+        def mo_hoi(fx, fy):
+            if so < 0.55 and not met:
+                return
+            pygame.draw.rect(man, (210, 220, 230), (fx, fy, 1, 2))
+            pygame.draw.rect(man, (210, 220, 230), (fx + 3, fy - 1, 1, 2))
+
         if mat == 2:
-            # Nhìn xuống (mặt)
             chan(sx + 2, sy + 12, cl)
             chan(sx + 9, sy + 12, cr)
-            pygame.draw.rect(man, than, (sx + 3, sy + 5, 10, 10))
-            pygame.draw.rect(man, (20, 20, 22), (sx + 3, sy + 5, 10, 10), 1)
+            ao_nguc(sx + 3, sy + 5, 10, 10)
+            pygame.draw.rect(man, gach, (sx + 5, sy + 8, 3, 2))  # huy hiệu
             tay(sx + 1, sy + 6 + tl)
             tay(sx + 12, sy + 6 + tr)
-            pygame.draw.rect(man, radio, (sx + 13, sy + 8, 5, 6))
-            pygame.draw.line(man, (230, 230, 230), (sx + 17, sy + 8), (sx + 17, sy + 1), 1)
+            pygame.draw.rect(man, radio, (sx + 13, sy + 9, 4, 5))
+            pygame.draw.line(man, (200, 200, 190), (sx + 16, sy + 9), (sx + 16, sy + 4), 1)
             pygame.draw.rect(man, da, (sx + 4, sy + 0, 8, 7))
-            pygame.draw.rect(man, toc, (sx + 4, sy + 0, 8, 3))
-            if chop:
-                pygame.draw.line(man, (20, 20, 30), (sx + 5, sy + 4), (sx + 7, sy + 4), 1)
-                pygame.draw.line(man, (20, 20, 30), (sx + 9, sy + 4), (sx + 11, sy + 4), 1)
-            else:
-                pygame.draw.rect(man, (20, 20, 30), (sx + 5, sy + 3, 2, 2))
-                pygame.draw.rect(man, (20, 20, 30), (sx + 9, sy + 3, 2, 2))
+            mu_bao(sx + 4, sy + 0, 8)
+            mat_bao(sx + 5, sy + 3, doi=True)
+            mo_hoi(sx + 6, sy + 1)
         elif mat == 0:
-            # Nhìn lên (lưng + balo radio)
             chan(sx + 2, sy + 12, cl)
             chan(sx + 9, sy + 12, cr)
-            pygame.draw.rect(man, radio, (sx + 4, sy + 6, 8, 8))
-            pygame.draw.line(man, (230, 230, 230), (sx + 8, sy + 6), (sx + 8, sy - 1), 1)
-            pygame.draw.circle(man, (200, 80, 80) if tan_so == AM else (80, 180, 255), (sx + 8, sy - 1), 2)
-            pygame.draw.rect(man, than, (sx + 3, sy + 5, 10, 10))
-            pygame.draw.rect(man, (20, 20, 22), (sx + 3, sy + 5, 10, 10), 1)
+            pygame.draw.rect(man, radio, (sx + 5, sy + 8, 6, 6))
+            pygame.draw.line(man, (200, 200, 190), (sx + 8, sy + 8), (sx + 8, sy + 3), 1)
+            pygame.draw.circle(man, (200, 70, 70) if tan_so == AM else (80, 180, 255), (sx + 8, sy + 3), 2)
+            ao_nguc(sx + 3, sy + 5, 10, 10)
             tay(sx + 1, sy + 6 + tr)
             tay(sx + 12, sy + 6 + tl)
-            pygame.draw.rect(man, toc, (sx + 4, sy + 0, 8, 7))
+            pygame.draw.rect(man, mu, (sx + 3, sy - 1, 10, 8))
+            pygame.draw.rect(man, gach, (sx + 3, sy + 2, 10, 1))
             pygame.draw.rect(man, da, (sx + 5, sy + 5, 6, 2))
         elif mat == 1:
-            # Nhìn phải (nghiêng)
             chan(sx + 4 + cr // 2, sy + 12, cr)
             chan(sx + 7 + cl // 2, sy + 12, cl)
-            pygame.draw.rect(man, than, (sx + 4, sy + 5, 9, 10))
-            pygame.draw.rect(man, (20, 20, 22), (sx + 4, sy + 5, 9, 10), 1)
-            tay(sx + 10, sy + 6 + tr)
-            pygame.draw.rect(man, radio, (sx + 2, sy + 8, 4, 6))
-            pygame.draw.line(man, (230, 230, 230), (sx + 4, sy + 8), (sx + 4, sy + 2), 1)
+            ao_nguc(sx + 4, sy + 5, 9, 10)
+            pygame.draw.rect(man, gach, (sx + 9, sy + 8, 2, 2))
+            tay(sx + 11, sy + 6 + tr)
+            pygame.draw.rect(man, (210, 190, 70), (sx + 13, sy + 10 + tr, 3, 2))  # đèn pin
+            pygame.draw.rect(man, radio, (sx + 2, sy + 9, 3, 5))
+            pygame.draw.line(man, (200, 200, 190), (sx + 3, sy + 9), (sx + 3, sy + 5), 1)
             pygame.draw.rect(man, da, (sx + 6, sy + 0, 7, 7))
-            pygame.draw.rect(man, toc, (sx + 6, sy + 0, 7, 3))
-            if chop:
-                pygame.draw.line(man, (20, 20, 30), (sx + 10, sy + 4), (sx + 12, sy + 4), 1)
-            else:
-                pygame.draw.rect(man, (20, 20, 30), (sx + 10, sy + 3, 2, 2))
+            mu_bao(sx + 6, sy + 0, 7)
+            pygame.draw.rect(man, mu, (sx + 12, sy + 2, 2, 2))  # vành mũ
+            mat_bao(sx + 10, sy + 3, doi=False)
+            mo_hoi(sx + 8, sy + 1)
         else:
-            # Nhìn trái
             chan(sx + 4 + cl // 2, sy + 12, cl)
             chan(sx + 7 + cr // 2, sy + 12, cr)
-            pygame.draw.rect(man, than, (sx + 3, sy + 5, 9, 10))
-            pygame.draw.rect(man, (20, 20, 22), (sx + 3, sy + 5, 9, 10), 1)
-            tay(sx + 3, sy + 6 + tl)
-            pygame.draw.rect(man, radio, (sx + 11, sy + 8, 4, 6))
-            pygame.draw.line(man, (230, 230, 230), (sx + 13, sy + 8), (sx + 13, sy + 2), 1)
+            ao_nguc(sx + 3, sy + 5, 9, 10)
+            pygame.draw.rect(man, gach, (sx + 4, sy + 8, 2, 2))
+            tay(sx + 2, sy + 6 + tl)
+            pygame.draw.rect(man, (210, 190, 70), (sx, sy + 10 + tl, 3, 2))
+            pygame.draw.rect(man, radio, (sx + 11, sy + 9, 3, 5))
+            pygame.draw.line(man, (200, 200, 190), (sx + 13, sy + 9), (sx + 13, sy + 5), 1)
             pygame.draw.rect(man, da, (sx + 3, sy + 0, 7, 7))
-            pygame.draw.rect(man, toc, (sx + 3, sy + 0, 7, 3))
-            if chop:
-                pygame.draw.line(man, (20, 20, 30), (sx + 4, sy + 4), (sx + 6, sy + 4), 1)
-            else:
-                pygame.draw.rect(man, (20, 20, 30), (sx + 4, sy + 3, 2, 2))
+            mu_bao(sx + 3, sy + 0, 7)
+            pygame.draw.rect(man, mu, (sx + 2, sy + 2, 2, 2))
+            mat_bao(sx + 4, sy + 3, doi=False)
+            mo_hoi(sx + 6, sy + 1)
 
         if self.ron_ren:
             pygame.draw.circle(
-                man, (180, 220, 255),
+                man, (160, 200, 230),
+                (sx + self.w // 2, sy + self.h // 2 + 2), 12, 1
+            )
+        elif self.tho_gat_t > 0:
+            pygame.draw.circle(
+                man, (255, 90, 70),
                 (sx + self.w // 2, sy + self.h // 2 + 2), 13, 1
             )
 
@@ -821,9 +1047,10 @@ class Enemy:
     """
     Quái mù ở thế giới AM:
       - Đi tuần nếu không nghe thấy gì.
-      - Nếu Player DI CHUYỂN mà KHÔNG giữ SHIFT trong bán kính nghe → đuổi.
-      - Rón rén (SHIFT) thu nhỏ bán kính; đứng yên thì không bị nghe.
-      - Khi Cưỡng chế AM mà Player nhúc nhích / không giữ SHIFT → lao diệt.
+      - Nếu Player DI CHUYỂN mà KHÔNG nín thở (Q) trong bán kính nghe → đuổi.
+      - Chạy (SHIFT) nghe rất xa. Nín thở thu nhỏ bán kính.
+      - Hết hơi (thở gấp) thì bị nghe dù đứng yên.
+      - Khi Cưỡng chế AM mà Player nhúc nhích / không giữ Q → lao diệt.
     """
 
     PATROL, CHASE, RUSH = "patrol", "chase", "rush"
@@ -840,7 +1067,7 @@ class Enemy:
         self.jitter = random.random() * 20.0   # lệch nhịp để không giật đồng loạt
         self.toc_do = TOC_DO_QUAI_TUAN
         self.huong_x = 1
-        self.bien_the = random.randint(0, 2)   # 0 hai mắt / 1 mắt trán / 2 chùm mắt
+        self.bien_the = random.randint(0, 2)   # 0 lỗ giữa / 1 nứt mặt / 2 rỗ lỗ
 
     @property
     def cx(self):
@@ -881,11 +1108,14 @@ class Enemy:
             self.trang_thai = Enemy.RUSH
 
         if self.trang_thai != Enemy.RUSH:
-            if player.bam_di_chuyen and not player.ron_ren and d <= BAN_KINH_NGHE:
+            r_nghe = BAN_KINH_CHAY if player.dang_chay else BAN_KINH_NGHE
+            if player.tho_gat_t > 0.0 and d <= BAN_KINH_NGHE:
+                self.trang_thai = Enemy.CHASE
+            elif player.bam_di_chuyen and not player.ron_ren and d <= r_nghe:
                 self.trang_thai = Enemy.CHASE
             elif player.bam_di_chuyen and player.ron_ren and d <= BAN_KINH_REN:
                 self.trang_thai = Enemy.CHASE
-            elif self.trang_thai == Enemy.CHASE and d > BAN_KINH_NGHE * 1.55:
+            elif self.trang_thai == Enemy.CHASE and d > r_nghe * 1.55:
                 self.trang_thai = Enemy.PATROL
                 self.doi_chon = 0.0
 
@@ -942,7 +1172,7 @@ class Enemy:
         # Vẽ lớn hơn hitbox: bóng trồi lên khỏi ô, chân trùng tâm va chạm
         sx, sy = camera.apply(self.cx, self.cy)
         ve_quai_am(
-            man, sx, sy + 4, 1.7, self.jitter,
+            man, sx, sy + 4, 2.0, self.jitter,
             self.trang_thai, self.huong_x, self.bien_the, nhieu=True,
         )
 
@@ -1127,7 +1357,7 @@ class LevelManager:
     MUC_TIEU = {
         1: "Dò sóng ở FM (tạch tạch), nhảy AM nhặt 3 băng ẩn, về Trạm phát thanh.",
         2: "Tường FM = lối AM. Nhảy SPACE luồn mê cung, lấy 3 băng, thoát.",
-        3: "Nhặt mật mã ở FM, mở hộp ở AM (E). Khi đài hỏng: ĐỨNG YÊN + SHIFT.",
+        3: "Nhặt mật mã ở FM, mở hộp ở AM (E). Khi đài hỏng: ĐỨNG YÊN + giữ Q.",
     }
 
     # Map màn 1 được sinh trong _tao_truong_hoc (trường ~32x22, nhiều phòng).
@@ -1572,21 +1802,31 @@ class UI:
             man.blit(self.f_nho.render("CHẾ ĐỘ DÒ", True, mau_ts), (14 + s_ts.get_width(), 10))
         man.blit(self.f_nho.render("Màn %d  %s" % (level.so, level.ten), True, (140, 140, 150)), (10, 28))
 
-        # Thanh pin
-        bx, by, bw, bh = 250, 10, 180, 16
-        pygame.draw.rect(man, (30, 30, 34), (bx, by, bw, bh))
-        tle = max(0.0, min(1.0, player.pin / PIN_TOI_DA))
-        if tle > 0.45:
+        def thanh(x, y, w, h, tle, mau, nhan):
+            man.blit(self.f_nho.render(nhan, True, (185, 185, 190)), (x - 36, y - 2))
+            pygame.draw.rect(man, (30, 30, 34), (x, y, w, h))
+            pygame.draw.rect(man, mau, (x, y, int(w * max(0.0, min(1.0, tle))), h))
+            pygame.draw.rect(man, (170, 170, 180), (x, y, w, h), 1)
+
+        t_pin = player.pin / PIN_TOI_DA
+        if t_pin > 0.45:
             mau_pin = (50, 200, 90)
-        elif tle > 0.2:
+        elif t_pin > 0.2:
             mau_pin = (220, 180, 40)
         else:
             mau_pin = (220, 50, 40)
-        pygame.draw.rect(man, mau_pin, (bx, by, int(bw * tle), bh))
-        pygame.draw.rect(man, (180, 180, 190), (bx, by, bw, bh), 1)
-        man.blit(self.f_nho.render("PIN", True, (200, 200, 200)), (bx, by + 16))
-        if player.kiet_suc:
-            man.blit(self.f_nho.render("HẾT PIN — CHẬM", True, (255, 80, 60)), (bx + 36, by + 16))
+        thanh(292, 8, 128, 12, t_pin, mau_pin, "PIN")
+
+        t_tl = player.the_luc / THE_LUC_TOI_DA
+        if player.nin_tho or player.dang_chay:
+            mau_tl = (70, 180, 230) if player.nin_tho else (240, 160, 50)
+        elif t_tl > 0.4:
+            mau_tl = (90, 200, 170)
+        elif t_tl > 0.18:
+            mau_tl = (220, 180, 50)
+        else:
+            mau_tl = (220, 55, 50)
+        thanh(292, 28, 128, 12, t_tl, mau_tl, "LỰC")
 
         # Băng cassette
         man.blit(self.f_nho.render("BĂNG", True, (200, 200, 190)), (450, 6))
@@ -1612,7 +1852,7 @@ class UI:
 
         # Cảnh báo
         if cuong_che:
-            msg = "CƯỠNG CHẾ AM  —  GIỮ SHIFT + ĐỨNG YÊN"
+            msg = "CƯỠNG CHẾ AM  —  GIỮ Q + ĐỨNG YÊN"
             s = self.f_dam.render(msg, True, (255, 230, 60))
             man.blit(s, (RONG // 2 - s.get_width() // 2, HUD_H + 8))
         elif canh_bao:
@@ -1655,16 +1895,16 @@ class UI:
         blit_tam(man, phu, RONG // 2, 168)
 
         bang = [
-            "WASD        Di chuyển",
-            "SHIFT       Nín thở / rón rén  (quái mù chỉ nghe tiếng bước)",
-            "SPACE       Đổi tần số  FM (an toàn)  ↔  AM (chế độ dò: quái + băng mờ)",
-            "E           Mở Hộp An Toàn (màn 3, cần mật mã)",
+            "WASD / ↑↓←→   Di chuyển",
+            "SHIFT         Chạy (tốn thể lực, The Void nghe xa)",
+            "Q             Nín thở / rón rén  (tốn thể lực, khó bị nghe)",
+            "SPACE         Đổi tần số  FM (an toàn)  ↔  AM (dò: quái + băng mờ)",
+            "E             Mở Hộp An Toàn (màn 3, cần mật mã)",
             "",
             "Màn 1  Dò tạch tạch ở FM → SPACE sang AM, băng hiện mờ, đứng lên nhặt",
             "Màn 2  Tường bên này là lối bên kia — nhảy số luồn mê cung",
-            "Màn 3  Mật mã FM, hộp AM. Cứ 12-15s đài hỏng: ĐỨNG YÊN + SHIFT",
-            "",
-            "Nhặt PIN XANH ở FM để không bị đẩy về FM khi hết pin.",
+            "Màn 3  Mật mã FM, hộp AM. Cứ 12-15s đài hỏng: ĐỨNG YÊN + giữ Q",
+            "Nhặt PIN XANH ở FM. Hết thể lực thì không chạy/nín được.",
         ]
         y = 210
         for dong in bang:
@@ -1751,15 +1991,78 @@ class UI:
         blit_tam(man, self.f_dam.render("NHẤN  R  ĐỂ CHƠI LẠI     ESC — menu", True, (240, 240, 230)), RONG // 2, 420)
 
     def ve_jumpscare(self, man, t):
-        """t: 0..1 — bóng tần số phóng to, méo RGB, nhiễu đỏ."""
-        man.fill((18, 0, 0))
-        self.ve_nhieu_tinh(man, 0.95, do_do=True)
-        k = 3.0 + t * 3.6
-        cx, cy = RONG // 2 + int(math.sin(t * 40) * 10), CAO // 2 + 90
-        # Hai lớp lệch màu trước, rồi hình chính
-        ve_quai_am(man, cx - 8, cy, k, t * 8, "rush", 1, 2, nhieu=False)
-        ve_quai_am(man, cx + 6, cy + 4, k * 0.98, t * 8 + 1.7, "rush", 1, 1, nhieu=False)
-        ve_quai_am(man, cx, cy, k, t * 8 + 0.4, "rush", 1, 2, nhieu=True)
+        """t: 0..1 — The Void lao vào mặt: chớp, lunge, lỗ nuốt màn."""
+        t = max(0.0, min(1.0, t))
+        if t < 0.10:
+            man.fill((255, 255, 255) if int(t * 90) % 2 == 0 else (0, 0, 0))
+            self.ve_nhieu_tinh(man, 1.0, do_do=True)
+            return
+
+        man.fill((0, 0, 0))
+        self.ve_nhieu_tinh(man, 0.75 + 0.25 * t, do_do=True)
+
+        # Nấn lại rồi SLAM
+        if t < 0.28:
+            k = 5.0 + (t - 0.10) * 18.0
+        else:
+            u = (t - 0.28) / 0.72
+            slam = 1.0 - (1.0 - u) ** 3
+            k = 8.2 + slam * 10.5
+
+        sx = int(math.sin(t * 92.0) * (12 + 26 * t))
+        sy = int(math.cos(t * 71.0) * (8 + 18 * t))
+        cx = RONG // 2 + sx
+        cy = int(CAO * 0.46 + 30.0 * k) + sy
+
+        ve_quai_am(man, cx - 14, cy + 2, k * 0.97, t * 13.0, "rush", 1, 2, nhieu=False)
+        ve_quai_am(man, cx + 12, cy - 2, k * 0.98, t * 13.0 + 1.1, "rush", 1, 1, nhieu=False)
+        ve_quai_am(man, cx, cy, k, t * 13.0 + 0.4, "rush", 1, 1, nhieu=True)
+
+        # Tua từ mép màn hình siết vào lỗ — đường gãy, không phải tia thẳng
+        vong = (255, 36, 28)
+        for i in range(6):
+            goc = i * 1.05 + t * 2.4
+            x0 = RONG // 2 + math.cos(goc) * (400 - t * 150)
+            y0 = CAO // 2 + math.sin(goc) * (300 - t * 100)
+            x1 = cx + math.cos(goc + 3.14) * 28
+            y1 = int(CAO * 0.42) + math.sin(goc + 3.14) * 22
+            px, py = x0, y0
+            nseg = 5
+            for s in range(1, nseg + 1):
+                kk = s / float(nseg)
+                nx = x0 + (x1 - x0) * kk + math.sin(t * 9 + s * 1.8 + i) * 22 * (1.0 - kk)
+                ny = y0 + (y1 - y0) * kk + math.cos(t * 7 + s * 1.4 + i) * 16 * (1.0 - kk)
+                pygame.draw.line(
+                    man, vong, (int(px), int(py)), (int(nx), int(ny)),
+                    2 if t > 0.35 else 1,
+                )
+                px, py = nx, ny
+
+        # Lỗ nuốt màn hình
+        if t > 0.42:
+            u = (t - 0.42) / 0.58
+            rw = int(70 + u * u * 520)
+            rh = int(90 + u * u * 640)
+            pygame.draw.ellipse(
+                man, (0, 0, 0),
+                (cx - rw // 2, CAO // 2 - rh // 2 + sy, rw, rh),
+            )
+            pygame.draw.ellipse(
+                man, (220, 30, 24),
+                (cx - rw // 2, CAO // 2 - rh // 2 + sy, rw, rh),
+                max(2, int(4 - u * 2)),
+            )
+            if u > 0.35:
+                pygame.draw.circle(
+                    man, (180, 20, 20),
+                    (cx, CAO // 2 + sy),
+                    max(2, int(6 * (1.0 - u))),
+                )
+
+        if 0.16 < t < 0.22 or 0.46 < t < 0.52 or t > 0.92:
+            f = pygame.Surface((RONG, CAO), pygame.SRCALPHA)
+            f.fill((255, 240, 238, 140 if t < 0.9 else 200))
+            man.blit(f, (0, 0))
 
 
 # =============================================================================
@@ -1884,7 +2187,7 @@ class Game:
     def xu_ly_cuong_che(self, dt):
         """
         Màn 3: mỗi 12-15 giây đài hỏng, ép sang AM 4 giây, khoá SPACE.
-        Phải GIỮ SHIFT và không nhấn WASD. Vi phạm → quái lao tới.
+        Phải GIỮ Q và không nhấn WASD/mũi tên. Vi phạm → quái lao tới.
         """
         if self.level.so != 3 or self.trang_thai != CHOI:
             self.cuong_che = False
@@ -1922,7 +2225,7 @@ class Game:
                     self.tim_cho_dung(AM)
                     self.audio.phat_doi_song(AM)
                     self.audio.cap_nhat_the_gioi(AM)
-                self.bao("CƯỠNG CHẾ AM — giữ SHIFT, đứng yên!", 2.5)
+                self.bao("CƯỠNG CHẾ AM — giữ Q, đứng yên!", 2.5)
 
     def chet(self):
         self.audio.im_het()
@@ -1959,16 +2262,23 @@ class Game:
 
         # Quái
         bi_san = False
+        d_min = 9999.0
         for e in self.level.enemies:
             e.cap_nhat(
                 dt, self.player, self.level, self.tan_so,
                 self.cuong_che, self.vi_pham_cuong_che,
             )
+            d_min = min(d_min, khoang_cach(e.cx, e.cy, self.player.cx, self.player.cy))
             if self.tan_so == AM and e.trang_thai in (Enemy.CHASE, Enemy.RUSH):
                 bi_san = True
             if self.tan_so == AM and e.bat_duoc(self.player):
                 self.chet()
                 return
+        self.player.cap_nhat_so_hai(
+            dt, self.tan_so, bi_san, d_min, self.cuong_che,
+        )
+        if self.player.tho_gat_t > 0.58:
+            self.bao("Hết hơi — The Void nghe thấy!", 1.3)
 
         # Thoát màn: đủ 3 băng + đứng trạm + đang FM
         if self.level.dang_o_tram(self.player):
@@ -1997,9 +2307,15 @@ class Game:
                 if suc > 0.72:
                     self.bao("Tín hiệu mạnh — SPACE sang AM để nhặt băng", 0.4)
 
+        rung = 0.0
+        if self.player.so_hai > 32.0:
+            rung = (self.player.so_hai - 32.0) / 68.0 * 2.6
+        if bi_san:
+            rung += 1.4
         self.camera.cap_nhat(
             self.player.cx, self.player.cy,
-            *self.level.kich_thuoc_pixel()
+            *self.level.kich_thuoc_pixel(),
+            rung=rung,
         )
         if self.thong_bao_t > 0:
             self.thong_bao_t -= dt
@@ -2045,6 +2361,15 @@ class Game:
             f.fill((200, 200, 220, a) if self.tan_so == FM else (180, 40, 40, a))
             self.man.blit(f, (0, 0))
 
+        # Overlay sợ hãi: vignette đập theo nhịp tim
+        so = self.player.so_hai / SO_HAI_TOI_DA
+        if so > 0.22:
+            nhip = 0.55 + 0.45 * math.sin(self.player.tho * (1.6 + 1.8 * so))
+            a = int((so - 0.18) * 110 * nhip)
+            so_surf = pygame.Surface((RONG, CAO), pygame.SRCALPHA)
+            so_surf.fill((40, 0, 0, min(110, a)))
+            self.man.blit(so_surf, (0, 0))
+
         self.man.blit(self.ui.vignette, (0, 0))
 
         canh_bao = (
@@ -2059,12 +2384,14 @@ class Game:
         if self.thong_bao_t > 0:
             self.ui.ve_thong_bao(self.man, self.thong_bao)
 
-        goi = "WASD đi  |  SHIFT nín thở  |  SPACE  FM / AM (dò)"
+        goi = "WASD/mũi tên đi  |  SHIFT chạy  |  Q nín thở  |  SPACE FM/AM"
         if self.level.so == 3:
             goi += "  |  E mở hộp"
         if self.tan_so == AM:
             goi += "   ·  Băng hiện mờ — đứng lên nhặt"
-            if not self.player.ron_ren:
+            if self.player.dang_chay:
+                goi += "   ! CHẠY — The Void nghe rất xa"
+            elif not self.player.ron_ren and self.player.bam_di_chuyen:
                 goi += "   ! Đang bước — quái có thể nghe"
         self.ui.ve_goi_y(self.man, goi)
 
@@ -2173,8 +2500,8 @@ class Game:
                     self.ve_choi()
             elif self.trang_thai == JUMPSCARE:
                 self.jumpscare_t += dt
-                self.ui.ve_jumpscare(self.man, min(1.0, self.jumpscare_t / 0.85))
-                if self.jumpscare_t >= 0.85:
+                self.ui.ve_jumpscare(self.man, min(1.0, self.jumpscare_t / 1.12))
+                if self.jumpscare_t >= 1.12:
                     self.trang_thai = THUA
             elif self.trang_thai == THANG:
                 self.ui.ve_thang(self.man, self.level, da_xong_het=False)
