@@ -43,6 +43,6 @@ Bản trình duyệt dùng cùng `game.py` (đóng gói pygbag). Mở link, **b�
 
 1. **Tín hiệu rời rạc** — Lưới 12×9 phòng học. 3 băng cassette **vô hình**. Ở FM, lại gần vị trí ẩn: màn hình nhấp nháy + tiếng tạch tạch nhanh dần. Nhảy AM để nhặt, về FM né quái, chạy vào **Trạm phát thanh**.
 2. **Mê cung không gian kép** — Lưới 16×12. Tường đá ở FM thành lối ở AM (và ngược lại). Nhảy SPACE luồn địa hình, lấy 3 băng, thoát.
-3. **Dịch mã & cưỡng chế AM** — Lưới 20×15. Nhặt 3 mảnh mật mã (số) trên tường **FM**, mở 3 hộp an toàn ở **AM** (phím E). Cứ 12–15 giây đài hỏng: **ép sang AM 4 giây, khoá SPACE**. Phải **giữ Q và đứng yên**. Nhúc nhích 1 px là quái lao tới.
+3. **Dịch mã & cưỡng chế AM** — Lưới 40×30. Nhặt 3 mảnh mật mã (số 2 chữ số, **đổi mỗi lần chơi**) trên tường **FM**, mở 3 hộp an toàn ở **AM** (phím E). Cứ khoảng 10 giây đài hỏng: **ép sang AM ~4.4 giây, khoá SPACE**. Phải **giữ Q và đứng yên**. Nhúc nhích 1 px là quái lao tới.
 
 Mục tiêu mỗi màn: **3 băng cassette** + đứng lên Trạm phát thanh ở **FM**.

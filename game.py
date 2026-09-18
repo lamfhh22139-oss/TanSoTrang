@@ -68,9 +68,9 @@ THE_LUC_HAO_NIN = 15.5              # Nín được ~6s — đủ 4s cưỡng ch
 THE_LUC_HOI = 26.0
 SO_HAI_TOI_DA = 100.0
 
-CUONG_CHE_MIN = 12.0                # Màn 3: chu kỳ sự cố đài (giây)
-CUONG_CHE_MAX = 15.0
-CUONG_CHE_KEO_DAI = 4.0             # Thời gian bị nhốt trong AM
+CUONG_CHE_MIN = 9.5                 # Màn 3: chu kỳ sự cố đài (giây)
+CUONG_CHE_MAX = 12.5
+CUONG_CHE_KEO_DAI = 4.4             # Thời gian bị nhốt trong AM
 CUONG_CHE_AN_HAN = 0.40             # Chừa một nhịp để kịp giữ Q
 
 # Màu sắc — FM (thế giới thực, đèn huỳnh quang vàng-xám)
@@ -1068,7 +1068,7 @@ class Enemy:
 
     PATROL, CHASE, RUSH = "patrol", "chase", "rush"
 
-    def __init__(self, x, y):
+    def __init__(self, x, y, he_so=1.0):
         self.w = 18
         self.h = 22
         self.x = float(x)
@@ -1079,6 +1079,7 @@ class Enemy:
         self.doi_chon = 0.0
         self.jitter = random.random() * 20.0   # lệch nhịp để không giật đồng loạt
         self.toc_do = TOC_DO_QUAI_TUAN
+        self.he_so = he_so
         self.huong_x = 1
         self.bien_the = random.randint(0, 2)   # 0 lỗ giữa / 1 nứt mặt / 2 rỗ lỗ
 
@@ -1134,16 +1135,16 @@ class Enemy:
 
         xuyen_tuong = False
         if self.trang_thai == Enemy.RUSH:
-            self.toc_do = TOC_DO_QUAI_LAO
+            self.toc_do = TOC_DO_QUAI_LAO * self.he_so
             self.tieu_x = player.x
             self.tieu_y = player.y
             xuyen_tuong = True
         elif self.trang_thai == Enemy.CHASE:
-            self.toc_do = TOC_DO_QUAI_DUOI
+            self.toc_do = TOC_DO_QUAI_DUOI * self.he_so
             self.tieu_x = player.x
             self.tieu_y = player.y
         else:
-            self.toc_do = TOC_DO_QUAI_TUAN
+            self.toc_do = TOC_DO_QUAI_TUAN * self.he_so
             self.doi_chon -= dt
             if self.doi_chon <= 0.0 or khoang_cach(self.cx, self.cy, self.tieu_x + self.w * 0.5, self.tieu_y + self.h * 0.5) < 8:
                 self._chon_diem_tuan(level)
@@ -1342,7 +1343,7 @@ class Safe:
         pygame.draw.circle(man, (40, 40, 40), (sx + 14, sy + 15), 2)
         if not self.da_mo:
             chu = font.render(str(self.ma), True, (220, 200, 80))
-            man.blit(chu, (sx + 10, sy - 14))
+            man.blit(chu, (sx + (self.w - chu.get_width()) // 2, sy - 14))
         else:
             pygame.draw.line(man, (80, 200, 90), (sx + 6, sy + 16), (sx + 12, sy + 22), 2)
             pygame.draw.line(man, (80, 200, 90), (sx + 12, sy + 22), (sx + 22, sy + 8), 2)
@@ -1370,7 +1371,7 @@ class LevelManager:
     MUC_TIEU = {
         1: "Dò sóng ở FM (tạch tạch), nhảy AM nhặt 3 băng ẩn, về Trạm phát thanh.",
         2: "Tường FM = lối AM. Nhảy SPACE luồn mê cung, lấy 3 băng, thoát.",
-        3: "Nhặt mật mã ở FM, mở hộp ở AM (E). Khi đài hỏng: ĐỨNG YÊN + giữ Q.",
+        3: "Nhặt mật mã (đổi mỗi lần chơi) ở FM, mở hộp ở AM (E). Đài hỏng: ĐỨNG YÊN + giữ Q.",
     }
 
     # Map màn 1 được sinh trong _tao_truong_hoc (trường ~32x22, nhiều phòng).
@@ -1431,7 +1432,11 @@ class LevelManager:
         elif so == 2:
             self._tai_man_kep(32, 24, seed=2026, so_quai=5, so_pin=5)
         else:
-            self._tai_man_kep(40, 30, seed=1999, so_quai=7, so_pin=6, man3=True)
+            # Mê cung + mật mã random mỗi lần vào màn 3
+            self._tai_man_kep(
+                40, 30, seed=random.randint(1, 2**31 - 1),
+                so_quai=9, so_pin=4, man3=True,
+            )
 
     def _gan_grid_tu_chuoi(self, hang):
         self.grid = [list(row) for row in hang]
@@ -1517,7 +1522,7 @@ class LevelManager:
                 x, y = self.tam_o(tx, ty, 18, 22)
                 self.enemies.append(Enemy(x, y))
 
-    def _tao_me_cung_kep(self, w, h, rng):
+    def _tao_me_cung_kep(self, w, h, rng, ti_le_tuong=0.24):
         """
         Mê cung địa hình đối lập:
           - Lưới hành lang '.' mỗi 3 ô: đi được CẢ FM lẫn AM (chỗ nhảy số).
@@ -1534,7 +1539,7 @@ class LevelManager:
         # Rải tường đặc trong phòng cho rối, không phá hành lang kép
         for y in range(2, h - 2):
             for x in range(2, w - 2):
-                if g[y][x] in ("F", "A") and rng.random() < 0.24:
+                if g[y][x] in ("F", "A") and rng.random() < ti_le_tuong:
                     g[y][x] = "#"
         g[1][1] = "."
         g[h - 2][w - 2] = "."
@@ -1573,7 +1578,9 @@ class LevelManager:
 
     def _tai_man_kep(self, w, h, seed, so_quai, so_pin, man3=False):
         rng = random.Random(seed)
-        self.grid = self._tao_me_cung_kep(w, h, rng)
+        self.grid = self._tao_me_cung_kep(
+            w, h, rng, ti_le_tuong=0.32 if man3 else 0.24,
+        )
         self.w, self.h = w, h
         self.start = self.tam_o(1, 1)
         self.exit_pos = ((w - 2) * TILE + TILE * 0.5, (h - 2) * TILE + TILE * 0.5)
@@ -1615,7 +1622,7 @@ class LevelManager:
         cam = [(1, 1), (w - 2, h - 2)]
         da_dung = list(cam)
         if man3:
-            ma_so = [3, 7, 9]
+            ma_so = rng.sample(range(10, 100), 3)
             vt_ma = chon_xa(o_f, 3, da_dung)
             da_dung.extend(vt_ma)
             vt_hop = chon_xa(o_a, 3, da_dung)
@@ -1659,9 +1666,10 @@ class LevelManager:
 
         # Quái đứng trên hành lang kép, tránh spawn và vật phẩm
         vt_quai = chon_xa(o_kep, so_quai, da_dung)
+        he_so = 1.12 if man3 else 1.0
         for tx, ty in vt_quai:
             x, y = self.tam_o(tx, ty, 18, 22)
-            self.enemies.append(Enemy(x, y))
+            self.enemies.append(Enemy(x, y, he_so=he_so))
 
     def khoang_cach_bang_an(self, px, py):
         """Màn 1: khoảng cách tới băng cassette ẩn gần nhất (chưa nhặt)."""
@@ -1916,7 +1924,7 @@ class UI:
             "",
             "Màn 1  Dò tạch tạch ở FM → SPACE sang AM, băng hiện mờ, đứng lên nhặt",
             "Màn 2  Tường bên này là lối bên kia — nhảy số luồn mê cung",
-            "Màn 3  Mật mã FM, hộp AM. Cứ 12-15s đài hỏng: ĐỨNG YÊN + giữ Q",
+            "Màn 3  Mật mã (đổi mỗi lần) FM, hộp AM. Cứ ~10s đài hỏng: ĐỨNG YÊN + giữ Q",
             "Nhặt PIN XANH ở FM. Hết thể lực thì không chạy/nín được.",
         ]
         y = 210
@@ -2202,7 +2210,7 @@ class Game:
 
     def xu_ly_cuong_che(self, dt):
         """
-        Màn 3: mỗi 12-15 giây đài hỏng, ép sang AM 4 giây, khoá SPACE.
+        Màn 3: mỗi 9.5-12.5 giây đài hỏng, ép sang AM 4.4 giây, khoá SPACE.
         Phải GIỮ Q và không nhấn WASD/mũi tên. Vi phạm → quái lao tới.
         """
         if self.level.so != 3 or self.trang_thai != CHOI:
