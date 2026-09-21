@@ -27,13 +27,14 @@ Bản trình duyệt dùng cùng `game.py` (đóng gói pygbag). Mở link, **b�
 | **Q** (giữ) | Nín thở / rón rén — chậm, tốn thể lực, khó bị nghe |
 | **SPACE** | Đổi tần số **FM** (thế giới thực, an toàn) ↔ **AM** (thế giới song song, có quái) |
 | **E** | Mở Hộp An Toàn (màn 3) |
+| **P** | Tạm dừng / tiếp tục (hoặc click nút góc phải HUD) |
 | **ENTER** | Bắt đầu / qua màn |
 | **R** | Chơi lại khi Game Over |
 | **ESC** | Về menu / thoát |
 
 ## Cơ chế chung
 
-- **Pin** tụt khi ở AM. Hết pin bị ép về FM và **làm chậm**. Nhặt viên **pin xanh** ở FM để hồi.
+- **Pin** tụt khi chủ động ở AM (sự cố đài màn 3 không hao pin). Hết pin bị ép về FM và **làm chậm**. Nhặt viên **pin xanh** ở FM để hồi. Màn 3 rải nhiều pin hơn vì mê cung rộng.
 - **Thể lực** (thanh TL): chạy và nín thở đều tốn. Hết thể lực thì **thở gấp** — The Void nghe thấy. Đứng yên để hồi; sợ hãi làm hồi chậm hơn.
 - **Sợ hãi**: tăng khi ở AM, gần / bị The Void săn. Nhân vật run, mắt mở to, màn hình đập theo nhịp tim.
 - Quái **mù**: chỉ đuổi nếu bạn **di chuyển mà không nín thở (Q)** khi đứng gần. Chạy thì bị nghe từ xa. Đứng yên hoặc nín thở thì chúng không nghe thấy (trừ khi hết hơi).

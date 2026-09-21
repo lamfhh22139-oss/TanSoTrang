@@ -17,6 +17,7 @@ Phím:
     SHIFT            Chạy (tốn thể lực, quái nghe xa hơn)
     Q                Nín thở / rón rén (tốn thể lực, khó bị nghe)
     SPACE            Đổi tần số FM ↔ AM (chế độ dò: băng hiện mờ)
+    P                Tạm dừng / tiếp tục
     ENTER            Menu → cốt truyện → vào game
     E                Mở Hộp An Toàn (màn 3)
     R                Chơi lại (khi thua)
@@ -44,7 +45,7 @@ TILE = 40                           # Kích thước một ô lưới (pixel)
 FM, AM = "FM", "AM"                 # Hai thế giới tần số
 
 PIN_TOI_DA = 100.0
-PIN_HAO_MOI_GIAY = 8.5              # Pin tụt khi đang ở AM
+PIN_HAO_MOI_GIAY = 6.0              # Pin tụt khi chủ động ở AM (~17s một thanh)
 PIN_NHAT = 42.0                     # Lượng pin hồi khi nhặt viên pin
 PIN_TOI_THIEU_AM = 4.0              # Dưới mức này không tự bật AM được
 
@@ -84,8 +85,8 @@ MAU_SAN_AM = (28, 10, 14)
 MAU_TUONG_AM = (72, 18, 24)
 
 # Máy trạng thái màn hình
-MENU, COT_TRUYEN, CHOI, JUMPSCARE, THANG, THUA, CHIEN_THANG = (
-    "menu", "cot_truyen", "choi", "jumpscare", "thang", "thua", "chien_thang"
+MENU, COT_TRUYEN, CHOI, TAM_DUNG, JUMPSCARE, THANG, THUA, CHIEN_THANG = (
+    "menu", "cot_truyen", "choi", "tam_dung", "jumpscare", "thang", "thua", "chien_thang"
 )
 
 # Cốt truyện mở đầu — từng trang, ENTER lật trang / ESC bỏ qua
@@ -115,7 +116,7 @@ TRANG_TRUYEN = (
         "QUY TẮC SỐNG SÓT",
         "SPACE  —  nhảy FM (an toàn) / AM (chế độ dò).\n"
         "Ở AM, băng cassette hiện bóng mờ. Đứng lên là nhặt.\n"
-        "Q  nín thở.  SHIFT  chạy (ồn, tốn thể lực).\n"
+        "Q  nín thở.  SHIFT  chạy (ồn, tốn thể lực).  P  tạm dừng.\n"
         "Nhặt đủ 3 băng, về Trạm phát thanh, rồi TẮT ĐÀI.",
     ),
 )
@@ -640,7 +641,23 @@ class Audio:
         if self.ok and self.mo_hop is not None:
             self.mo_hop.play()
 
+    def tam_dung(self):
+        try:
+            pygame.mixer.pause()
+        except Exception:
+            pass
+
+    def tiep_tuc(self):
+        try:
+            pygame.mixer.unpause()
+        except Exception:
+            pass
+
     def im_het(self):
+        try:
+            pygame.mixer.unpause()
+        except Exception:
+            pass
         try:
             pygame.mixer.stop()
         except Exception:
@@ -1435,7 +1452,7 @@ class LevelManager:
             # Mê cung + mật mã random mỗi lần vào màn 3
             self._tai_man_kep(
                 40, 30, seed=random.randint(1, 2**31 - 1),
-                so_quai=9, so_pin=4, man3=True,
+                so_quai=9, so_pin=8, man3=True,
             )
 
     def _gan_grid_tu_chuoi(self, hang):
@@ -1771,6 +1788,7 @@ class UI:
         self.surf_nhieu = pygame.Surface((RONG, CAO), pygame.SRCALPHA)
         self.vignette = self._tao_vignette()
         self.glitch = 0
+        self.rect_nut_pause = pygame.Rect(RONG - 46, 8, 36, 36)
 
     def _tao_vignette(self):
         s = pygame.Surface((RONG, CAO), pygame.SRCALPHA)
@@ -1805,8 +1823,8 @@ class UI:
             pygame.draw.rect(self.surf_nhieu, (255, 255, 255, a), (x, y, random.randint(2, 7), 1))
         man.blit(self.surf_nhieu, (0, 0))
 
-    def ve_hud(self, man, tan_so, player, level, cuong_che, canh_bao, bi_san):
-        """Thanh HUD: tần số, pin, mật mã, số băng."""
+    def ve_hud(self, man, tan_so, player, level, cuong_che, canh_bao, bi_san, tam_dung=False):
+        """Thanh HUD: tần số, pin, mật mã, số băng, nút tạm dừng."""
         pygame.draw.rect(man, (12, 12, 14), (0, 0, RONG, HUD_H))
         pygame.draw.line(man, (70, 70, 80), (0, HUD_H - 1), (RONG, HUD_H - 1), 1)
 
@@ -1871,6 +1889,20 @@ class UI:
         else:
             man.blit(self.f_nho.render("(chỉ màn 3)", True, (90, 90, 95)), (600, 24))
 
+        # Nút tạm dừng — góc phải HUD, phím P
+        r = self.rect_nut_pause
+        hover = r.collidepoint(pygame.mouse.get_pos())
+        pygame.draw.rect(man, (55, 55, 64) if hover else (28, 28, 32), r)
+        pygame.draw.rect(man, (200, 200, 210) if hover else (120, 120, 130), r, 1)
+        if tam_dung:
+            pygame.draw.polygon(
+                man, (90, 230, 140),
+                ((r.x + 12, r.y + 8), (r.x + 12, r.y + 28), (r.x + 28, r.y + 18)),
+            )
+        else:
+            pygame.draw.rect(man, (230, 230, 225), (r.x + 11, r.y + 10, 5, 16))
+            pygame.draw.rect(man, (230, 230, 225), (r.x + 20, r.y + 10, 5, 16))
+
         # Cảnh báo
         if cuong_che:
             msg = "CƯỠNG CHẾ AM  —  GIỮ Q + ĐỨNG YÊN"
@@ -1921,17 +1953,18 @@ class UI:
             "Q             Nín thở / rón rén  (tốn thể lực, khó bị nghe)",
             "SPACE         Đổi tần số  FM (an toàn)  ↔  AM (dò: quái + băng mờ)",
             "E             Mở Hộp An Toàn (màn 3, cần mật mã)",
+            "P             Tạm dừng / tiếp tục",
             "",
             "Màn 1  Dò tạch tạch ở FM → SPACE sang AM, băng hiện mờ, đứng lên nhặt",
             "Màn 2  Tường bên này là lối bên kia — nhảy số luồn mê cung",
             "Màn 3  Mật mã (đổi mỗi lần) FM, hộp AM. Cứ ~10s đài hỏng: ĐỨNG YÊN + giữ Q",
             "Nhặt PIN XANH ở FM. Hết thể lực thì không chạy/nín được.",
         ]
-        y = 210
+        y = 204
         for dong in bang:
             s = self.f_nho.render(dong, True, (190, 190, 195))
             man.blit(s, (RONG // 2 - 300, y))
-            y += 22
+            y += 21
 
         nhap = self.f_dam.render("NHẤN  ENTER  —  CỐT TRUYỆN", True, (80, 255, 140))
         if int(self.glitch * 2) % 2 == 0:
@@ -2010,6 +2043,20 @@ class UI:
         blit_tam(man, self.f_to.render("GAME OVER", True, (220, 200, 200)), RONG // 2, 250)
         blit_tam(man, self.f_vua.render("Chúng nghe thấy bước chân của bạn.", True, (180, 140, 140)), RONG // 2, 320)
         blit_tam(man, self.f_dam.render("NHẤN  R  ĐỂ CHƠI LẠI     ESC — menu", True, (240, 240, 230)), RONG // 2, 420)
+
+    def ve_tam_dung(self, man):
+        """Overlay tạm dừng phủ lên khung hình đang đóng băng."""
+        che = pygame.Surface((RONG, CAO), pygame.SRCALPHA)
+        che.fill((0, 0, 0, 165))
+        man.blit(che, (0, 0))
+        self.ve_nhieu_tinh(man, 0.22)
+        blit_tam(man, self.f_tieu.render("TẠM DỪNG", True, (240, 240, 230)), RONG // 2, 210)
+        blit_tam(
+            man,
+            self.f_dam.render("P  /  ENTER  /  click  —  tiếp tục", True, (80, 255, 140)),
+            RONG // 2, 290,
+        )
+        blit_tam(man, self.f_nho.render("ESC  —  về menu", True, (160, 160, 165)), RONG // 2, 332)
 
     def ve_jumpscare(self, man, t):
         """t: 0..1 — The Void lao vào mặt: chớp, lunge, lỗ nuốt màn."""
@@ -2251,6 +2298,18 @@ class Game:
                     self.audio.cap_nhat_the_gioi(AM)
                 self.bao("CƯỠNG CHẾ AM — giữ Q, đứng yên!", 2.5)
 
+    def tam_dung_choi(self):
+        if self.trang_thai != CHOI:
+            return
+        self.trang_thai = TAM_DUNG
+        self.audio.tam_dung()
+
+    def tiep_tuc_choi(self):
+        if self.trang_thai != TAM_DUNG:
+            return
+        self.trang_thai = CHOI
+        self.audio.tiep_tuc()
+
     def chet(self):
         self.audio.im_het()
         self.audio.phat_hu()
@@ -2263,15 +2322,16 @@ class Game:
 
         self.player.cap_nhat(dt, keys, self.level, self.tan_so)
 
-        # Pin tụt ở AM (cưỡng chế vẫn hao). Hết pin → ép về FM, trừ lúc đang cưỡng chế.
-        het = self.player.hao_pin(dt, self.tan_so)
-        if het and not self.cuong_che:
-            if self.tan_so != FM:
-                self.tan_so = FM
-                self.tim_cho_dung(FM)
-                self.audio.phat_doi_song(FM)
-                self.audio.cap_nhat_the_gioi(FM)
-            self.bao("Hết pin! Bị đẩy về FM — tìm viên pin xanh", 2.5)
+        # Pin chỉ tụt khi chủ động ở AM. Cưỡng chế màn 3 không hao — đã phạt bằng nín thở.
+        if not self.cuong_che:
+            het = self.player.hao_pin(dt, self.tan_so)
+            if het:
+                if self.tan_so != FM:
+                    self.tan_so = FM
+                    self.tim_cho_dung(FM)
+                    self.audio.phat_doi_song(FM)
+                    self.audio.cap_nhat_the_gioi(FM)
+                self.bao("Hết pin! Bị đẩy về FM — tìm viên pin xanh", 2.5)
 
         # Nhặt vật phẩm
         for it in self.level.items:
@@ -2404,11 +2464,12 @@ class Game:
         self.ui.ve_hud(
             self.man, self.tan_so, self.player, self.level,
             self.cuong_che, canh_bao, getattr(self, "_bi_san", False),
+            tam_dung=(self.trang_thai == TAM_DUNG),
         )
         if self.thong_bao_t > 0:
             self.ui.ve_thong_bao(self.man, self.thong_bao)
 
-        goi = "WASD/mũi tên đi  |  SHIFT chạy  |  Q nín thở  |  SPACE FM/AM"
+        goi = "WASD/mũi tên đi  |  SHIFT chạy  |  Q nín thở  |  SPACE FM/AM  |  P tạm dừng"
         if self.level.so == 3:
             goi += "  |  E mở hộp"
         if self.tan_so == AM:
@@ -2426,6 +2487,13 @@ class Game:
                     self.ui.ve_thong_bao(self.man, "E — mở hộp (cần mật mã %d)" % sf.ma)
 
     def xu_ly_phim(self, su_kien):
+        if su_kien.type == pygame.MOUSEBUTTONDOWN and su_kien.button == 1:
+            if self.trang_thai == CHOI:
+                if self.ui.rect_nut_pause.collidepoint(su_kien.pos):
+                    self.tam_dung_choi()
+            elif self.trang_thai == TAM_DUNG:
+                self.tiep_tuc_choi()
+            return
         if su_kien.type != pygame.KEYDOWN:
             return
         k = su_kien.key
@@ -2451,7 +2519,9 @@ class Game:
                 else:
                     self.bat_dau_man(1)
         elif self.trang_thai == CHOI:
-            if k == pygame.K_SPACE:
+            if k == pygame.K_p:
+                self.tam_dung_choi()
+            elif k == pygame.K_SPACE:
                 self.doi_tan_so(bat_buoc=False)
             elif k == pygame.K_e:
                 if self.tan_so == AM:
@@ -2472,6 +2542,12 @@ class Game:
                             break
                     if not da_xu_ly and self.level.safes:
                         self.bao("Đứng sát hộp rồi nhấn E", 1.4)
+            elif k == pygame.K_ESCAPE:
+                self.audio.im_het()
+                self.trang_thai = MENU
+        elif self.trang_thai == TAM_DUNG:
+            if k in (pygame.K_p, pygame.K_RETURN, pygame.K_SPACE):
+                self.tiep_tuc_choi()
             elif k == pygame.K_ESCAPE:
                 self.audio.im_het()
                 self.trang_thai = MENU
@@ -2522,6 +2598,9 @@ class Game:
                 self.cap_nhat_choi(dt, keys)
                 if self.trang_thai == CHOI:
                     self.ve_choi()
+            elif self.trang_thai == TAM_DUNG:
+                self.ve_choi()
+                self.ui.ve_tam_dung(self.man)
             elif self.trang_thai == JUMPSCARE:
                 self.jumpscare_t += dt
                 self.ui.ve_jumpscare(self.man, min(1.0, self.jumpscare_t / 1.12))
