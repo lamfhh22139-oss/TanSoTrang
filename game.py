@@ -2322,16 +2322,15 @@ class Game:
 
         self.player.cap_nhat(dt, keys, self.level, self.tan_so)
 
-        # Pin chỉ tụt khi chủ động ở AM. Cưỡng chế màn 3 không hao — đã phạt bằng nín thở.
-        if not self.cuong_che:
-            het = self.player.hao_pin(dt, self.tan_so)
-            if het:
-                if self.tan_so != FM:
-                    self.tan_so = FM
-                    self.tim_cho_dung(FM)
-                    self.audio.phat_doi_song(FM)
-                    self.audio.cap_nhat_the_gioi(FM)
-                self.bao("Hết pin! Bị đẩy về FM — tìm viên pin xanh", 2.5)
+        # Pin tụt ở AM, kể cả lúc sự cố đài. Hết pin → ép về FM, trừ lúc đang cưỡng chế.
+        het = self.player.hao_pin(dt, self.tan_so)
+        if het and not self.cuong_che:
+            if self.tan_so != FM:
+                self.tan_so = FM
+                self.tim_cho_dung(FM)
+                self.audio.phat_doi_song(FM)
+                self.audio.cap_nhat_the_gioi(FM)
+            self.bao("Hết pin! Bị đẩy về FM — tìm viên pin xanh", 2.5)
 
         # Nhặt vật phẩm
         for it in self.level.items:

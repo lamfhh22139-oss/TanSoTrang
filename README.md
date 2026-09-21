@@ -34,7 +34,7 @@ Bản trình duyệt dùng cùng `game.py` (đóng gói pygbag). Mở link, **b�
 
 ## Cơ chế chung
 
-- **Pin** tụt khi chủ động ở AM (sự cố đài màn 3 không hao pin). Hết pin bị ép về FM và **làm chậm**. Nhặt viên **pin xanh** ở FM để hồi. Màn 3 rải nhiều pin hơn vì mê cung rộng.
+- **Pin** tụt khi ở AM, kể cả lúc sự cố đài màn 3. Hết pin bị ép về FM và **làm chậm**. Nhặt viên **pin xanh** ở FM để hồi. Màn 3 rải nhiều pin hơn vì mê cung rộng.
 - **Thể lực** (thanh TL): chạy và nín thở đều tốn. Hết thể lực thì **thở gấp** — The Void nghe thấy. Đứng yên để hồi; sợ hãi làm hồi chậm hơn.
 - **Sợ hãi**: tăng khi ở AM, gần / bị The Void săn. Nhân vật run, mắt mở to, màn hình đập theo nhịp tim.
 - Quái **mù**: chỉ đuổi nếu bạn **di chuyển mà không nín thở (Q)** khi đứng gần. Chạy thì bị nghe từ xa. Đứng yên hoặc nín thở thì chúng không nghe thấy (trừ khi hết hơi).
