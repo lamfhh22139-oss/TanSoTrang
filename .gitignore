@@ -15,3 +15,5 @@ package-lock.json
 package.json
 railway-check.png
 _check_railway.mjs
+data/
+phien.json

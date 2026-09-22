@@ -27,10 +27,24 @@ Bản trình duyệt dùng cùng `game.py` (đóng gói pygbag). Mở link, **b�
 | **Q** (giữ) | Nín thở / rón rén — chậm, tốn thể lực, khó bị nghe |
 | **SPACE** | Đổi tần số **FM** (thế giới thực, an toàn) ↔ **AM** (thế giới song song, có quái) |
 | **E** | Mở Hộp An Toàn (màn 3) |
-| **P** | Tạm dừng / tiếp tục (hoặc click nút góc phải HUD) |
+| **P** | Tạm dừng / tiếp tục (hoặc click nút góc phải HUD). Phòng nhiều người: chỉ chủ phòng |
+| **T** | Tạo nick / đăng nhập |
+| **N** | Nhiều người (cần nick) |
 | **ENTER** | Bắt đầu / qua màn |
 | **R** | Chơi lại khi Game Over |
 | **ESC** | Về menu / thoát |
+
+## Nick và nhiều người
+
+Trên menu: **T** tạo nick (3–16 ký tự) và mật khẩu, **F2** đổi giữa tạo nick và đăng nhập. **N** vào sảnh: **F1** tạo phòng (mã 4 ký tự) hoặc gõ mã rồi **ENTER** để vào. Tối đa 4 người, chơi chung một mê cung.
+
+- Thấy đồng đội cùng tần số; người ở tần số kia hiện bóng mờ.
+- Băng cassette, mật mã và hộp an toàn dùng chung. Pin và thể lực của từng người.
+- Quái do chủ phòng điều khiển, nên cả phòng thấy cùng một The Void.
+- Ai còn sống đứng lên Trạm phát thanh ở FM khi đủ 3 băng thì cả phòng qua màn.
+- Chết thì xem đồng đội chơi tiếp. Cả nhóm chết thì Game Over — chủ phòng bấm **R**.
+
+Bản web và bản Thonny vào cùng phòng trên https://tansotrang-production.up.railway.app. Nick lưu trên máy chủ.
 
 ## Cơ chế chung
 

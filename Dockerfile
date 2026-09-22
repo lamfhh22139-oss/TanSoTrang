@@ -4,7 +4,7 @@ WORKDIR /app
 
 RUN pip install --no-cache-dir pygbag==0.9.2
 
-COPY game.py main.py server.py ./
+COPY game.py main.py server.py net.py ./
 COPY fonts ./fonts
 COPY README.md ./
 

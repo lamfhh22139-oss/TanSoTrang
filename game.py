@@ -19,6 +19,8 @@ Phím:
     SPACE            Đổi tần số FM ↔ AM (chế độ dò: băng hiện mờ)
     P                Tạm dừng / tiếp tục
     ENTER            Menu → cốt truyện → vào game
+    T                Tạo nick / đăng nhập
+    N                Nhiều người (cần nick)
     E                Mở Hộp An Toàn (màn 3)
     R                Chơi lại (khi thua)
     ESC              Về menu / thoát menu
@@ -32,6 +34,8 @@ import random
 import sys
 
 import pygame
+
+from net import KetNoi
 
 
 # =============================================================================
@@ -83,10 +87,18 @@ MAU_BAN_HOC = (92, 64, 38)
 MAU_NEN_AM = (8, 2, 4)
 MAU_SAN_AM = (28, 10, 14)
 MAU_TUONG_AM = (72, 18, 24)
+MAU_DONG_DOI = (
+    (70, 150, 255),
+    (255, 170, 50),
+    (190, 120, 255),
+    (70, 210, 150),
+)
+LECH_SPAWN = ((0, 0), (40, 0), (0, 40), (40, 40))
 
 # Máy trạng thái màn hình
-MENU, COT_TRUYEN, CHOI, TAM_DUNG, JUMPSCARE, THANG, THUA, CHIEN_THANG = (
-    "menu", "cot_truyen", "choi", "tam_dung", "jumpscare", "thang", "thua", "chien_thang"
+MENU, COT_TRUYEN, CHOI, TAM_DUNG, JUMPSCARE, THANG, THUA, CHIEN_THANG, NICK, SANH = (
+    "menu", "cot_truyen", "choi", "tam_dung", "jumpscare", "thang", "thua", "chien_thang",
+    "nick", "sanh",
 )
 
 # Cốt truyện mở đầu — từng trang, ENTER lật trang / ESC bỏ qua
@@ -911,8 +923,15 @@ class Player:
         if self.pin > 8.0:
             self.kiet_suc = False
 
-    def ve(self, man, camera, tan_so):
-        """Bảo vệ 4 hướng: mũ, huy hiệu, đai. Sợ / mệt hiện trên mặt và dáng."""
+    def ve(self, man, camera, tan_so, ao_mau=None, ten=None, mo=False, font=None):
+        """Bảo vệ 4 hướng. mo=True: bóng người ở tần số kia. ten: nick đồng đội."""
+        if mo:
+            sx, sy = camera.apply(self.x, self.y)
+            pygame.draw.circle(man, (190, 190, 200), (int(sx + 8), int(sy + 8)), 9, 1)
+            if ten and font:
+                s = font.render(ten, True, (220, 220, 225))
+                man.blit(s, (int(sx + 8 - s.get_width() / 2), int(sy - 16)))
+            return
         sx, sy = camera.apply(self.x, self.y)
         so = self.so_hai / SO_HAI_TOI_DA
         met = self.met or self.the_luc < 22.0 or self.kiet_suc
@@ -922,6 +941,8 @@ class Player:
             ao, da = (78, 84, 98), (228, 226, 230)
         else:
             ao, da = (32, 44, 68), (222, 198, 168)
+        if ao_mau is not None:
+            ao = ao_mau
         if met:
             ao = (ao[0] + 18, ao[1] + 8, max(20, ao[2] - 10))
         if so > 0.35:
@@ -1068,6 +1089,9 @@ class Player:
                 man, (255, 90, 70),
                 (sx + self.w // 2, sy + self.h // 2 + 2), 13, 1
             )
+        if ten and font:
+            s = font.render(ten, True, ao_mau or (230, 230, 220))
+            man.blit(s, (int(sx + self.w / 2 - s.get_width() / 2), int(sy - 14)))
 
 
 # =============================================================================
@@ -1125,7 +1149,10 @@ class Enemy:
         self.tieu_x = self.x
         self.tieu_y = self.y
 
-    def cap_nhat(self, dt, player, level, tan_so, cuong_che, vi_pham):
+    def cap_nhat(self, dt, player, level, tan_so, cuong_che, vi_pham, nhom=None):
+        if nhom is not None:
+            self._cap_nhat_nhom(dt, nhom, level, cuong_che)
+            return
         # Quái chỉ sống ở AM — đứng im (ẩn) khi Player đang FM
         if tan_so != AM:
             if self.trang_thai != Enemy.RUSH:
@@ -1191,6 +1218,98 @@ class Enemy:
             elif self.trang_thai == Enemy.PATROL:
                 self.doi_chon = 0.0
 
+        self.jitter += dt * 18.0
+
+    def _cap_nhat_nhom(self, dt, nhom, level, cuong_che):
+        """Cùng luật nghe với một người, nhưng săn người đang ở AM gần và ồn nhất."""
+        song = [p for p in nhom if getattr(p, "song", True)]
+        if not song:
+            if self.trang_thai != Enemy.RUSH:
+                self.trang_thai = Enemy.PATROL
+            return
+
+        xuyen_tuong = False
+        rui = None
+        if cuong_che:
+            for p in song:
+                if not getattr(p, "vi_pham", False):
+                    continue
+                d = khoang_cach(self.cx, self.cy, p.cx, p.cy)
+                if rui is None or d < rui[0]:
+                    rui = (d, p)
+        if rui is not None:
+            self.trang_thai = Enemy.RUSH
+            self.toc_do = TOC_DO_QUAI_LAO * self.he_so
+            self.tieu_x = rui[1].x
+            self.tieu_y = rui[1].y
+            xuyen_tuong = True
+        else:
+            if self.trang_thai == Enemy.RUSH:
+                self.trang_thai = Enemy.PATROL
+            nghe = []
+            gan_p = None
+            gan_d = 1e9
+            for p in song:
+                d = khoang_cach(self.cx, self.cy, p.cx, p.cy)
+                if d < gan_d:
+                    gan_p, gan_d = p, d
+                r_nghe = BAN_KINH_CHAY if p.dang_chay else BAN_KINH_NGHE
+                bat = False
+                if getattr(p, "tho_gat_t", 0) > 0.0 and d <= BAN_KINH_NGHE:
+                    bat = True
+                elif p.bam_di_chuyen and not p.ron_ren and d <= r_nghe:
+                    bat = True
+                elif p.bam_di_chuyen and p.ron_ren and d <= BAN_KINH_REN:
+                    bat = True
+                if bat:
+                    nghe.append((d, p))
+            if nghe:
+                nghe.sort(key=lambda t: t[0])
+                muc = nghe[0][1]
+                self.trang_thai = Enemy.CHASE
+                self.toc_do = TOC_DO_QUAI_DUOI * self.he_so
+                self.tieu_x = muc.x
+                self.tieu_y = muc.y
+            elif self.trang_thai == Enemy.CHASE and gan_p is not None:
+                r_nghe = BAN_KINH_CHAY if gan_p.dang_chay else BAN_KINH_NGHE
+                if gan_d > r_nghe * 1.55:
+                    self.trang_thai = Enemy.PATROL
+                else:
+                    self.toc_do = TOC_DO_QUAI_DUOI * self.he_so
+                    self.tieu_x = gan_p.x
+                    self.tieu_y = gan_p.y
+            if self.trang_thai == Enemy.PATROL:
+                self.toc_do = TOC_DO_QUAI_TUAN * self.he_so
+                self.doi_chon -= dt
+                if self.doi_chon <= 0.0 or khoang_cach(
+                    self.cx, self.cy, self.tieu_x + self.w * 0.5, self.tieu_y + self.h * 0.5
+                ) < 8:
+                    self._chon_diem_tuan(level)
+                    self.doi_chon = random.uniform(1.2, 2.8)
+
+        dx, dy = chuan_hoa(self.tieu_x - self.x, self.tieu_y - self.y)
+        if abs(dx) > 0.15:
+            self.huong_x = 1 if dx > 0 else -1
+        buoc_x = dx * self.toc_do * dt
+        buoc_y = dy * self.toc_do * dt
+
+        def tuong(tx, ty):
+            return level.la_tuong(tx, ty, AM)
+
+        if xuyen_tuong:
+            self.x += buoc_x
+            self.y += buoc_y
+        else:
+            nx = self.x + buoc_x
+            if not cham_4_goc(nx, self.y, self.w, self.h, tuong):
+                self.x = nx
+            elif self.trang_thai == Enemy.PATROL:
+                self.doi_chon = 0.0
+            ny = self.y + buoc_y
+            if not cham_4_goc(self.x, ny, self.w, self.h, tuong):
+                self.y = ny
+            elif self.trang_thai == Enemy.PATROL:
+                self.doi_chon = 0.0
         self.jitter += dt * 18.0
 
     def bat_duoc(self, player):
@@ -1436,23 +1555,30 @@ class LevelManager:
         """Đặt đối tượng vào giữa ô, trừ kích thước."""
         return tx * TILE + (TILE - w) * 0.5, ty * TILE + (TILE - h) * 0.5
 
-    def tai_cap(self, so):
-        """Sinh toàn bộ dữ liệu một màn chơi."""
+    def tai_cap(self, so, seed=None):
+        """Sinh một màn. seed=None giữ cách chơi một mình; có seed thì cả phòng giống nhau."""
         self.so = so
         self.ten = LevelManager.TEN[so]
         self.muc_tieu = LevelManager.MUC_TIEU[so]
         self.items = []
         self.safes = []
         self.enemies = []
+        if so == 3 and seed is None:
+            seed_map = random.randint(1, 2**31 - 1)
+        elif so == 2 and seed is None:
+            seed_map = 2026
+        else:
+            seed_map = seed if seed is not None else 1001
+        self.seed = seed_map if seed is not None or so != 1 else None
+        if seed is not None:
+            random.seed(seed)
         if so == 1:
             self._tai_man_1()
         elif so == 2:
-            self._tai_man_kep(32, 24, seed=2026, so_quai=5, so_pin=5)
+            self._tai_man_kep(32, 24, seed=seed_map, so_quai=5, so_pin=5)
         else:
-            # Mê cung + mật mã random mỗi lần vào màn 3
             self._tai_man_kep(
-                40, 30, seed=random.randint(1, 2**31 - 1),
-                so_quai=9, so_pin=8, man3=True,
+                40, 30, seed=seed_map, so_quai=9, so_pin=8, man3=True,
             )
 
     def _gan_grid_tu_chuoi(self, hang):
@@ -1823,7 +1949,7 @@ class UI:
             pygame.draw.rect(self.surf_nhieu, (255, 255, 255, a), (x, y, random.randint(2, 7), 1))
         man.blit(self.surf_nhieu, (0, 0))
 
-    def ve_hud(self, man, tan_so, player, level, cuong_che, canh_bao, bi_san, tam_dung=False):
+    def ve_hud(self, man, tan_so, player, level, cuong_che, canh_bao, bi_san, tam_dung=False, bang=None, ma=None):
         """Thanh HUD: tần số, pin, mật mã, số băng, nút tạm dừng."""
         pygame.draw.rect(man, (12, 12, 14), (0, 0, RONG, HUD_H))
         pygame.draw.line(man, (70, 70, 80), (0, HUD_H - 1), (RONG, HUD_H - 1), 1)
@@ -1867,23 +1993,26 @@ class UI:
             mau_tl = (220, 55, 50)
         thanh(292, 28, 128, 12, t_tl, mau_tl, "LỰC")
 
-        # Băng cassette
+        # Băng cassette (nhiều người: băng chung của cả phòng)
+        so_bang = player.bang if bang is None else bang
         man.blit(self.f_nho.render("BĂNG", True, (200, 200, 190)), (450, 6))
         for i in range(3):
             rx = 450 + i * 28
             ry = 24
-            if i < player.bang:
+            if i < so_bang:
                 pygame.draw.rect(man, (160, 120, 50), (rx, ry, 22, 14))
                 pygame.draw.circle(man, (40, 30, 16), (rx + 7, ry + 7), 3)
                 pygame.draw.circle(man, (40, 30, 16), (rx + 15, ry + 7), 3)
             else:
                 pygame.draw.rect(man, (40, 40, 44), (rx, ry, 22, 14), 1)
-        man.blit(self.f_so.render("%d/3" % player.bang, True, (230, 230, 220)), (538, 22))
+        man.blit(self.f_so.render("%d/3" % so_bang, True, (230, 230, 220)), (538, 22))
 
         # Mật mã
         man.blit(self.f_nho.render("MẬT MÃ", True, (200, 200, 190)), (600, 6))
         if level.so == 3:
-            ds = player.ma_so if player.ma_so else []
+            ds = player.ma_so if ma is None else ma
+            if not ds:
+                ds = []
             txt = "  ".join(str(n) for n in ds) if ds else "—"
             man.blit(self.f_dam.render(txt, True, (240, 210, 80)), (600, 22))
         else:
@@ -1931,7 +2060,7 @@ class UI:
         s = self.f_nho.render(text, True, (160, 160, 165))
         man.blit(s, (10, CAO - 22))
 
-    def ve_menu(self, man, dt):
+    def ve_menu(self, man, dt, nick=""):
         man.fill((6, 6, 8))
         self.ve_nhieu_tinh(man, 0.55)
         self.glitch += dt
@@ -1960,16 +2089,127 @@ class UI:
             "Màn 3  Mật mã (đổi mỗi lần) FM, hộp AM. Cứ ~10s đài hỏng: ĐỨNG YÊN + giữ Q",
             "Nhặt PIN XANH ở FM. Hết thể lực thì không chạy/nín được.",
         ]
-        y = 204
+        y = 196
         for dong in bang:
             s = self.f_nho.render(dong, True, (190, 190, 195))
             man.blit(s, (RONG // 2 - 300, y))
-            y += 21
+            y += 19
 
-        nhap = self.f_dam.render("NHẤN  ENTER  —  CỐT TRUYỆN", True, (80, 255, 140))
-        if int(self.glitch * 2) % 2 == 0:
-            blit_tam(man, nhap, RONG // 2, 530)
-        blit_tam(man, self.f_nho.render("ESC thoát", True, (110, 110, 115)), RONG // 2, 558)
+        if nick:
+            man.blit(self.f_nho.render("Nick: " + nick, True, (120, 220, 160)), (16, 14))
+
+        self.nut_menu = []
+
+        def dong_nut(text, yy, hanh, mau):
+            s = self.f_dam.render(text, True, mau)
+            r = s.get_rect(center=(RONG // 2, yy))
+            r.inflate_ip(28, 8)
+            self.nut_menu.append((r, hanh))
+            if r.collidepoint(pygame.mouse.get_pos()):
+                pygame.draw.rect(man, (28, 36, 32), r)
+            man.blit(s, s.get_rect(center=(RONG // 2, yy)))
+
+        nhap_nhay = int(self.glitch * 2) % 2 == 0
+        dong_nut(
+            "ENTER  —  CHƠI MỘT MÌNH",
+            458,
+            "don",
+            (80, 255, 140) if nhap_nhay else (60, 180, 100),
+        )
+        dong_nut("T  —  TẠO NICK / ĐĂNG NHẬP", 486, "nick", (230, 210, 120))
+        dong_nut("N  —  NHIỀU NGƯỜI", 514, "mang", (140, 190, 255))
+        if nick:
+            dong_nut("X  —  ĐĂNG XUẤT", 542, "xuat", (160, 160, 165))
+        else:
+            blit_tam(man, self.f_nho.render("ESC thoát", True, (110, 110, 115)), RONG // 2, 548)
+        man.blit(self.vignette, (0, 0))
+
+    def ve_nick(self, man, dt, nick, mk, o_dang, dang_ky, loi):
+        """Ô nick + mật khẩu. F2 đổi đăng nhập / tạo nick."""
+        man.fill((6, 6, 8))
+        self.ve_nhieu_tinh(man, 0.35)
+        self.glitch += dt
+        tieu = "TẠO NICK" if dang_ky else "ĐĂNG NHẬP"
+        blit_tam(man, self.f_tieu.render(tieu, True, (240, 220, 140)), RONG // 2, 90)
+        phu = "Nick mới sẽ vào được phòng chơi chung" if dang_ky else "Nick đã có — vào phòng nhiều người"
+        blit_tam(man, self.f_nho.render(phu, True, (160, 160, 165)), RONG // 2, 132)
+
+        def o(nhan, gia_tri, y, an, dang):
+            man.blit(self.f_nho.render(nhan, True, (180, 180, 185)), (RONG // 2 - 160, y))
+            r = pygame.Rect(RONG // 2 - 160, y + 22, 320, 36)
+            pygame.draw.rect(man, (18, 18, 22), r)
+            pygame.draw.rect(man, (220, 200, 90) if dang else (80, 80, 90), r, 2)
+            hien = ("*" * len(gia_tri)) if an else gia_tri
+            if dang and int(self.glitch * 3) % 2 == 0:
+                hien += "_"
+            man.blit(self.f_vua.render(hien, True, (240, 240, 235)), (r.x + 10, r.y + 8))
+            return r
+
+        self.nut_nick = []
+        o("NICK", nick, 170, False, o_dang == 0)
+        o("MẬT KHẨU", mk, 250, True, o_dang == 1)
+        if loi:
+            blit_tam(man, self.f_vua.render(loi, True, (255, 90, 80)), RONG // 2, 360)
+
+        def nut(text, y, hanh, mau):
+            s = self.f_dam.render(text, True, mau)
+            r = s.get_rect(center=(RONG // 2, y))
+            r.inflate_ip(20, 8)
+            self.nut_nick.append((r, hanh))
+            man.blit(s, s.get_rect(center=(RONG // 2, y)))
+
+        nut("ENTER  —  " + ("TẠO NICK" if dang_ky else "ĐĂNG NHẬP"), 420, "gui", (80, 255, 140))
+        nut("F2  —  ĐỔI  " + ("ĐĂNG NHẬP" if dang_ky else "TẠO NICK"), 460, "doi", (200, 200, 190))
+        nut("TAB đổi ô     ESC menu", 510, "esc", (140, 140, 145))
+        man.blit(self.vignette, (0, 0))
+
+    def ve_sanh(self, man, dt, nick, phong, ds, la_chu, ma_nhap, loi):
+        man.fill((6, 6, 8))
+        self.ve_nhieu_tinh(man, 0.3)
+        self.glitch += dt
+        blit_tam(man, self.f_tieu.render("NHIỀU NGƯỜI", True, (160, 200, 255)), RONG // 2, 70)
+        blit_tam(man, self.f_nho.render("Nick: " + (nick or "—"), True, (140, 210, 160)), RONG // 2, 112)
+        self.nut_sanh = []
+
+        def nut(text, y, hanh, mau):
+            s = self.f_dam.render(text, True, mau)
+            r = s.get_rect(center=(RONG // 2, y))
+            r.inflate_ip(16, 6)
+            self.nut_sanh.append((r, hanh))
+            man.blit(s, s.get_rect(center=(RONG // 2, y)))
+
+        if not phong:
+            blit_tam(
+                man,
+                self.f_vua.render("Gõ mã 4 ký tự rồi ENTER để vào", True, (210, 210, 200)),
+                RONG // 2, 170,
+            )
+            hop = pygame.Rect(RONG // 2 - 70, 200, 140, 44)
+            pygame.draw.rect(man, (16, 16, 20), hop)
+            pygame.draw.rect(man, (140, 180, 255), hop, 2)
+            chu = ma_nhap + ("_" if int(self.glitch * 3) % 2 == 0 else "")
+            blit_tam(man, self.f_to.render(chu, True, (240, 240, 245)), RONG // 2, 222)
+            nut("F1  —  TẠO PHÒNG MỚI", 300, "tao", (80, 255, 140))
+            nut("ESC  —  menu", 360, "esc", (150, 150, 155))
+        else:
+            blit_tam(man, self.f_nho.render("Mã phòng — gửi cho bạn", True, (160, 160, 165)), RONG // 2, 150)
+            blit_tam(man, self.f_tieu.render(phong, True, (255, 220, 120)), RONG // 2, 196)
+            y = 250
+            for i, ng in enumerate(ds):
+                mau = MAU_DONG_DOI[int(ng.get("mau", i)) % 4]
+                ten = ng.get("nick", "?")
+                if ng.get("la_chu"):
+                    ten += "  (chủ)"
+                s = self.f_vua.render("%d.  %s" % (i + 1, ten), True, mau)
+                man.blit(s, (RONG // 2 - 140, y))
+                y += 28
+            if la_chu:
+                nut("ENTER  —  BẮT ĐẦU", 470, "bat", (80, 255, 140))
+            else:
+                blit_tam(man, self.f_dam.render("Chờ chủ phòng bắt đầu", True, (200, 200, 120)), RONG // 2, 470)
+            nut("ESC  —  rời phòng", 520, "roi", (160, 160, 165))
+        if loi:
+            blit_tam(man, self.f_vua.render(loi, True, (255, 90, 80)), RONG // 2, 560)
         man.blit(self.vignette, (0, 0))
 
     def ve_cot_truyen(self, man, dt, so_trang, so_ky, n_trang):
@@ -2018,6 +2258,14 @@ class UI:
             blit_tam(man, self.f_nho.render(LevelManager.MUC_TIEU[level.so + 1], True, (140, 140, 130)), RONG // 2, 300)
         blit_tam(man, self.f_dam.render(n, True, (240, 240, 230)), RONG // 2, 400)
 
+    def ve_thang_mang(self, man, level, la_chu):
+        self.ve_thang(man, level, da_xong_het=False)
+        if la_chu:
+            chu = "ENTER — màn tiếp     ESC — rời phòng"
+        else:
+            chu = "Chờ chủ phòng mở màn tiếp"
+        blit_tam(man, self.f_nho.render(chu, True, (180, 180, 170)), RONG // 2, 450)
+
     def ve_chien_thang(self, man):
         man.fill((4, 8, 10))
         self.ve_nhieu_tinh(man, 0.2)
@@ -2036,13 +2284,26 @@ class UI:
             y += 28
         blit_tam(man, self.f_dam.render("ENTER — về menu     ESC — thoát", True, (230, 230, 220)), RONG // 2, 520)
 
-    def ve_thua(self, man):
+    def ve_chien_thang_mang(self, man, la_chu):
+        self.ve_chien_thang(man)
+        chu = "ENTER — về sảnh" if la_chu else "Chờ chủ phòng về sảnh"
+        blit_tam(man, self.f_nho.render(chu, True, (160, 200, 180)), RONG // 2, 560)
+
+    def ve_thua(self, man, mang=False, la_chu=False):
         man.fill((12, 0, 0))
         self.ve_nhieu_tinh(man, 0.7, do_do=True)
         blit_tam(man, self.f_tieu.render("TÍN HIỆU MẤT", True, (255, 40, 40)), RONG // 2, 180)
         blit_tam(man, self.f_to.render("GAME OVER", True, (220, 200, 200)), RONG // 2, 250)
-        blit_tam(man, self.f_vua.render("Chúng nghe thấy bước chân của bạn.", True, (180, 140, 140)), RONG // 2, 320)
-        blit_tam(man, self.f_dam.render("NHẤN  R  ĐỂ CHƠI LẠI     ESC — menu", True, (240, 240, 230)), RONG // 2, 420)
+        if mang:
+            blit_tam(man, self.f_vua.render("Cả nhóm đã bị nghe thấy.", True, (180, 140, 140)), RONG // 2, 320)
+            if la_chu:
+                chu = "R  —  chơi lại màn này     ESC — rời phòng"
+            else:
+                chu = "Chờ chủ phòng bấm chơi lại"
+            blit_tam(man, self.f_dam.render(chu, True, (240, 240, 230)), RONG // 2, 420)
+        else:
+            blit_tam(man, self.f_vua.render("Chúng nghe thấy bước chân của bạn.", True, (180, 140, 140)), RONG // 2, 320)
+            blit_tam(man, self.f_dam.render("NHẤN  R  ĐỂ CHƠI LẠI     ESC — menu", True, (240, 240, 230)), RONG // 2, 420)
 
     def ve_tam_dung(self, man):
         """Overlay tạm dừng phủ lên khung hình đang đóng băng."""
@@ -2134,6 +2395,97 @@ class UI:
 
 
 # =============================================================================
+# ĐỒNG ĐỘI — vị trí người chơi khác, do máy chủ chuyển
+# =============================================================================
+class Bong:
+    """Người chơi remote. x/y mạng để quái nghe; p.x/p.y để vẽ (đuổi cho mượt)."""
+
+    w = 16
+    h = 16
+
+    def __init__(self, ten, mau):
+        self.ten = ten
+        self.mau = mau % 4
+        self.p = Player(0, 0)
+        self.mx = 0.0
+        self.my = 0.0
+        self.tan_so = FM
+        self.song = True
+        self.vi_pham = False
+        self.co_muc = False
+
+    @property
+    def x(self):
+        return self.mx
+
+    @property
+    def y(self):
+        return self.my
+
+    @property
+    def cx(self):
+        return self.mx + 8.0
+
+    @property
+    def cy(self):
+        return self.my + 8.0
+
+    @property
+    def dang_chay(self):
+        return self.p.dang_chay
+
+    @property
+    def ron_ren(self):
+        return self.p.ron_ren
+
+    @property
+    def bam_di_chuyen(self):
+        return self.p.bam_di_chuyen
+
+    @property
+    def tho_gat_t(self):
+        return self.p.tho_gat_t
+
+    def rect(self):
+        return pygame.Rect(int(self.mx), int(self.my), self.w, self.h)
+
+    def ap_goi(self, s):
+        self.mx = float(s.get("x", self.mx))
+        self.my = float(s.get("y", self.my))
+        self.tan_so = s.get("ts") if s.get("ts") in (FM, AM) else FM
+        self.song = bool(s.get("song", True))
+        self.vi_pham = bool(s.get("vp"))
+        self.mau = int(s.get("mau", self.mau)) % 4
+        p = self.p
+        p.huong_mat = int(s.get("hm", 2)) if int(s.get("hm", 2)) in (0, 1, 2, 3) else 2
+        p.dang_chay = bool(s.get("chay"))
+        p.ron_ren = bool(s.get("ren"))
+        p.nin_tho = p.ron_ren
+        p.bam_di_chuyen = bool(s.get("di"))
+        p.dang_di = p.bam_di_chuyen
+        p.pin = float(s.get("pin", 100))
+        p.the_luc = float(s.get("tl", 100))
+        p.so_hai = float(s.get("so", 0))
+        p.tho_gat_t = float(s.get("tho", 0))
+        p.kiet_suc = p.pin <= 0
+        p.met = p.the_luc < 16
+        if not self.co_muc:
+            p.x, p.y = self.mx, self.my
+            self.co_muc = True
+
+    def duoi(self, dt):
+        if not self.co_muc:
+            return
+        p = self.p
+        k = min(1.0, dt * 10.0)
+        p.x += (self.mx - p.x) * k
+        p.y += (self.my - p.y) * k
+        if p.dang_di:
+            p.buoc_t += dt * (7.0 if p.dang_chay else 4.2)
+        p.tho += dt * 2.0
+
+
+# =============================================================================
 # GAME — vòng lặp chính, đổi tần số, cưỡng chế AM, chuyển màn
 # =============================================================================
 class Game:
@@ -2178,14 +2530,46 @@ class Game:
         self.intro_trang = 0
         self.intro_ky = 0.0
 
+        self.mang = KetNoi()
+        self._mang_san = False
+        self._viec = ""
+        self._mang_t = 0.0
+        self.che_do_mang = False
+        self._dang_tran = False
+        self.phong = ""
+        self.la_chu = False
+        self.thu_tu = 0
+        self.van = 0
+        self.ds_phong = []
+        self.ban_be = {}
+        self.bang_chung = 0
+        self.ma_chung = []
+        self.da_chet = False
+        self.cho_nhat = []
+        self.cho_mo = []
+        self._bat_cho = []
+        self._cc_may = False
+        self.o_nhap = ["", ""]
+        self.o_dang = 0
+        self.dang_ky_moi = False
+        self._vao_sanh_sau = False
+        self.loi_nhap = ""
+        self.loi_phong = ""
+        self.ma_nhap = ""
+        self._chet_xong = THUA
+        self._bi_san_quai = False
+        self._d_min_quai = 9999.0
+
     def bao(self, text, giay=2.4):
         self.thong_bao = text
         self.thong_bao_t = giay
 
-    def bat_dau_man(self, so):
-        self.level.tai_cap(so)
+    def bat_dau_man(self, so, seed=None, lech=(0, 0)):
+        self.level.tai_cap(so, seed=seed)
         px, py = self.level.start
-        self.player.dat_lai(px, py)
+        self.player.dat_lai(px + lech[0], py + lech[1])
+        if lech != (0, 0):
+            self.tim_cho_dung(FM)
         self.tan_so = FM
         self.cuong_che = False
         self.cuong_che_t = 0.0
@@ -2310,61 +2694,86 @@ class Game:
         self.trang_thai = CHOI
         self.audio.tiep_tuc()
 
-    def chet(self):
+    def chet(self, ca_nhom=False):
+        # Chết một mình trong phòng: vẫn mô phỏng (chủ phòng) để đồng đội chơi tiếp.
+        if self.che_do_mang and not ca_nhom:
+            if self.trang_thai != CHOI:
+                return
+            if not self.da_chet:
+                self.da_chet = True
+                self.audio.phat_hu()
+                self.bao("Bạn đã chết — đồng đội vẫn đang chạy", 3.2)
+            return
+        if self.trang_thai == JUMPSCARE:
+            return
+        self.da_chet = True
         self.audio.im_het()
         self.audio.phat_hu()
         self.trang_thai = JUMPSCARE
         self.jumpscare_t = 0.0
+        self._chet_xong = THUA
 
     def cap_nhat_choi(self, dt, keys):
         self.thoi_gian_man += dt
-        self.xu_ly_cuong_che(dt)
+        if self.che_do_mang:
+            for b in self.ban_be.values():
+                b.duoi(dt)
+        if self.che_do_mang and not self.la_chu:
+            self._cuong_che_khach(dt)
+        else:
+            self.xu_ly_cuong_che(dt)
 
-        self.player.cap_nhat(dt, keys, self.level, self.tan_so)
+        if not self.da_chet:
+            self.player.cap_nhat(dt, keys, self.level, self.tan_so)
+        else:
+            self.player.bam_di_chuyen = False
+            self.player.vx = 0.0
+            self.player.vy = 0.0
 
         # Pin tụt ở AM, kể cả lúc sự cố đài. Hết pin → ép về FM, trừ lúc đang cưỡng chế.
-        het = self.player.hao_pin(dt, self.tan_so)
-        if het and not self.cuong_che:
-            if self.tan_so != FM:
-                self.tan_so = FM
-                self.tim_cho_dung(FM)
-                self.audio.phat_doi_song(FM)
-                self.audio.cap_nhat_the_gioi(FM)
-            self.bao("Hết pin! Bị đẩy về FM — tìm viên pin xanh", 2.5)
+        if not self.da_chet:
+            het = self.player.hao_pin(dt, self.tan_so)
+            if het and not self.cuong_che:
+                if self.tan_so != FM:
+                    self.tan_so = FM
+                    self.tim_cho_dung(FM)
+                    self.audio.phat_doi_song(FM)
+                    self.audio.cap_nhat_the_gioi(FM)
+                self.bao("Hết pin! Bị đẩy về FM — tìm viên pin xanh", 2.5)
 
-        # Nhặt vật phẩm
-        for it in self.level.items:
-            if it.thu_nhat(self.player, self.tan_so):
-                self.audio.phat_nhat()
-                if it.loai == "battery":
-                    self.bao("Pin +%d%%" % int(PIN_NHAT), 1.6)
-                elif it.loai == "cassette":
-                    self.bao("Đã nhặt BĂNG CASSETTE  (%d/3)" % self.player.bang, 2.0)
-                elif it.loai == "code":
-                    self.bao("Mật mã:  %s" % "  ".join(str(n) for n in self.player.ma_so), 2.2)
+        if self.che_do_mang:
+            if not self.da_chet:
+                self._quet_nhat()
+        else:
+            for it in self.level.items:
+                if it.thu_nhat(self.player, self.tan_so):
+                    self.audio.phat_nhat()
+                    if it.loai == "battery":
+                        self.bao("Pin +%d%%" % int(PIN_NHAT), 1.6)
+                    elif it.loai == "cassette":
+                        self.bao("Đã nhặt BĂNG CASSETTE  (%d/3)" % self.player.bang, 2.0)
+                    elif it.loai == "code":
+                        self.bao("Mật mã:  %s" % "  ".join(str(n) for n in self.player.ma_so), 2.2)
 
-        # Quái
-        bi_san = False
-        d_min = 9999.0
-        for e in self.level.enemies:
-            e.cap_nhat(
-                dt, self.player, self.level, self.tan_so,
-                self.cuong_che, self.vi_pham_cuong_che,
-            )
-            d_min = min(d_min, khoang_cach(e.cx, e.cy, self.player.cx, self.player.cy))
-            if self.tan_so == AM and e.trang_thai in (Enemy.CHASE, Enemy.RUSH):
-                bi_san = True
-            if self.tan_so == AM and e.bat_duoc(self.player):
-                self.chet()
-                return
+        if self._cap_nhat_quai(dt):
+            self.chet()
+            return
+        bi_san = self._bi_san_quai
+        d_min = self._d_min_quai
         self.player.cap_nhat_so_hai(
             dt, self.tan_so, bi_san, d_min, self.cuong_che,
         )
         if self.player.tho_gat_t > 0.58:
             self.bao("Hết hơi — The Void nghe thấy!", 1.3)
 
-        # Thoát màn: đủ 3 băng + đứng trạm + đang FM
-        if self.level.dang_o_tram(self.player):
+        # Thoát màn: đủ 3 băng + đứng trạm + đang FM. Phòng nhiều người do máy chủ chốt.
+        if self.che_do_mang:
+            if not self.da_chet and self.level.dang_o_tram(self.player):
+                if self.tan_so != FM:
+                    self.bao("Trạm phát thanh chỉ hoạt động ở FM", 1.2)
+                elif self.bang_chung < 3:
+                    self.bao("Cần đủ 3 băng cassette rồi hãy phát sóng", 1.4)
+        elif self.level.dang_o_tram(self.player):
             if self.tan_so != FM:
                 self.bao("Trạm phát thanh chỉ hoạt động ở FM", 1.6)
             elif self.player.bang >= 3:
@@ -2418,6 +2827,17 @@ class Game:
             sf.ve(self.man, self.camera, self.tan_so, self.ui.f_so)
         for e in self.level.enemies:
             e.ve(self.man, self.camera, self.tan_so)
+        if self.che_do_mang:
+            for b in self.ban_be.values():
+                cung = b.tan_so == self.tan_so and b.song
+                ten = b.ten if b.song else b.ten + " †"
+                if cung:
+                    b.p.ve(
+                        self.man, self.camera, self.tan_so,
+                        ao_mau=MAU_DONG_DOI[b.mau % 4], ten=ten, font=self.ui.f_nho,
+                    )
+                else:
+                    b.p.ve(self.man, self.camera, self.tan_so, ten=ten, mo=True, font=self.ui.f_nho)
         self.player.ve(self.man, self.camera, self.tan_so)
 
         # Overlay AM / tín hiệu màn 1
@@ -2464,11 +2884,20 @@ class Game:
             self.man, self.tan_so, self.player, self.level,
             self.cuong_che, canh_bao, getattr(self, "_bi_san", False),
             tam_dung=(self.trang_thai == TAM_DUNG),
+            bang=self.bang_chung if self.che_do_mang else None,
+            ma=self.ma_chung if self.che_do_mang else None,
         )
         if self.thong_bao_t > 0:
             self.ui.ve_thong_bao(self.man, self.thong_bao)
 
-        goi = "WASD/mũi tên đi  |  SHIFT chạy  |  Q nín thở  |  SPACE FM/AM  |  P tạm dừng"
+        if self.che_do_mang and self.da_chet:
+            goi = "BẠN ĐÃ CHẾT — xem đồng đội   |   phòng " + self.phong
+        elif self.che_do_mang:
+            goi = "Phòng %s  |  WASD  |  Q nín thở  |  SPACE  |  %s" % (
+                self.phong, "P tạm dừng" if self.la_chu else "chủ phòng mới tạm dừng được",
+            )
+        else:
+            goi = "WASD/mũi tên đi  |  SHIFT chạy  |  Q nín thở  |  SPACE FM/AM  |  P tạm dừng"
         if self.level.so == 3:
             goi += "  |  E mở hộp"
         if self.tan_so == AM:
@@ -2480,30 +2909,599 @@ class Game:
         self.ui.ve_goi_y(self.man, goi)
 
         # Gợi ý mở hộp khi đứng gần
-        if self.tan_so == AM:
+        if self.tan_so == AM and not self.da_chet:
             for sf in self.level.safes:
                 if not sf.da_mo and sf.gan_player(self.player):
                     self.ui.ve_thong_bao(self.man, "E — mở hộp (cần mật mã %d)" % sf.ma)
 
+    def _cham_vat(self, it):
+        can = {"battery": FM, "cassette": AM, "code": FM}.get(it.loai)
+        if self.tan_so != can:
+            return False
+        return khoang_cach(it.cx, it.cy, self.player.cx, self.player.cy) <= BAN_KINH_NHAT
+
+    def _quet_nhat(self):
+        for i, it in enumerate(self.level.items):
+            if it.da_nhat or any(m.get("i") == i for m in self.cho_nhat):
+                continue
+            if self._cham_vat(it):
+                self.cho_nhat.append({"i": i, "loai": it.loai, "gia": it.gia_tri})
+
+    def _xin_mo_hop(self):
+        if self.da_chet or self.tan_so != AM:
+            return
+        for i, sf in enumerate(self.level.safes):
+            if sf.da_mo or not sf.gan_player(self.player):
+                continue
+            if sf.ma not in self.ma_chung:
+                self.bao("Thiếu mật mã %d — tìm mảnh giấy ở FM" % sf.ma, 2.0)
+            elif not any(m.get("i") == i for m in self.cho_mo):
+                self.cho_mo.append({"i": i, "ma": sf.ma})
+                self.bao("Đang mở hộp %d…" % sf.ma, 1.0)
+            return
+        if self.level.safes:
+            self.bao("Đứng sát hộp rồi nhấn E", 1.2)
+
+    def _cuong_che_khach(self, dt):
+        """Khách áp sự cố đài do chủ phòng phát, không tự đếm giờ."""
+        if self.level.so != 3:
+            self.cuong_che = False
+            self.audio.dung_bao_dong()
+            return
+        bat = self._cc_may
+        if bat and not self.cuong_che:
+            self.cuong_che = True
+            self.cuong_che_an_han = CUONG_CHE_AN_HAN
+            self.vi_pham_cuong_che = False
+            if self.tan_so != AM:
+                self.tan_so = AM
+                self.tim_cho_dung(AM)
+                self.audio.phat_doi_song(AM)
+                self.audio.cap_nhat_the_gioi(AM)
+            self.bao("CƯỠNG CHẾ AM — giữ Q, đứng yên!", 2.5)
+            self.audio.phat_bao_dong()
+        elif self.cuong_che and not bat:
+            self.cuong_che = False
+            self.vi_pham_cuong_che = False
+            self.audio.dung_bao_dong()
+            if self.tan_so != FM:
+                self.tan_so = FM
+                self.tim_cho_dung(FM)
+                self.audio.phat_doi_song(FM)
+                self.audio.cap_nhat_the_gioi(FM)
+            self.bao("Đài ổn định trở lại — SPACE dùng được", 2.0)
+        elif bat:
+            self.cuong_che_an_han = max(0.0, self.cuong_che_an_han - dt)
+            self.audio.phat_bao_dong()
+            if self.cuong_che_an_han <= 0.0 and not self.da_chet:
+                if self.player.bam_di_chuyen or not self.player.ron_ren:
+                    self.vi_pham_cuong_che = True
+
+    def _cap_nhat_quai(self, dt):
+        """True nếu chơi một mình và vừa chết. Nhiều người: chủ phòng mô phỏng quái."""
+        bi_san = False
+        d_min = 9999.0
+        if self.che_do_mang and not self.la_chu:
+            for e in self.level.enemies:
+                if hasattr(e, "_mx"):
+                    k = min(1.0, dt * 10.0)
+                    e.x += (e._mx - e.x) * k
+                    e.y += (e._my - e.y) * k
+                d_min = min(d_min, khoang_cach(e.cx, e.cy, self.player.cx, self.player.cy))
+                if self.tan_so == AM and e.trang_thai in (Enemy.CHASE, Enemy.RUSH):
+                    bi_san = True
+            self._bi_san_quai = bi_san
+            self._d_min_quai = d_min
+            return False
+
+        if self.che_do_mang and self.la_chu:
+            self.player.vi_pham = bool(self.vi_pham_cuong_che) and not self.da_chet
+            self.player.song = not self.da_chet
+            nhom = []
+            if self.tan_so == AM and not self.da_chet:
+                nhom.append(self.player)
+            for b in self.ban_be.values():
+                if b.song and b.tan_so == AM:
+                    nhom.append(b)
+            for e in self.level.enemies:
+                e.cap_nhat(
+                    dt, self.player, self.level, AM if nhom else FM,
+                    self.cuong_che, False, nhom=nhom,
+                )
+                d_min = min(d_min, khoang_cach(e.cx, e.cy, self.player.cx, self.player.cy))
+                if self.tan_so == AM and e.trang_thai in (Enemy.CHASE, Enemy.RUSH):
+                    bi_san = True
+            if self.tan_so == AM and not self.da_chet:
+                for e in self.level.enemies:
+                    if e.bat_duoc(self.player):
+                        if self.mang.nick not in self._bat_cho:
+                            self._bat_cho.append(self.mang.nick)
+                        self.chet()
+                        break
+            for b in self.ban_be.values():
+                if not b.song or b.tan_so != AM:
+                    continue
+                for e in self.level.enemies:
+                    if e.bat_duoc(b) and b.ten not in self._bat_cho:
+                        self._bat_cho.append(b.ten)
+                        break
+            self._bi_san_quai = bi_san
+            self._d_min_quai = d_min
+            return False
+
+        for e in self.level.enemies:
+            e.cap_nhat(
+                dt, self.player, self.level, self.tan_so,
+                self.cuong_che, self.vi_pham_cuong_che,
+            )
+            d_min = min(d_min, khoang_cach(e.cx, e.cy, self.player.cx, self.player.cy))
+            if self.tan_so == AM and e.trang_thai in (Enemy.CHASE, Enemy.RUSH):
+                bi_san = True
+            if self.tan_so == AM and e.bat_duoc(self.player):
+                self._bi_san_quai = bi_san
+                self._d_min_quai = d_min
+                return True
+        self._bi_san_quai = bi_san
+        self._d_min_quai = d_min
+        return False
+
+    def _dung_tran(self):
+        self._dang_tran = False
+        self.che_do_mang = False
+        self.da_chet = False
+        self.ban_be.clear()
+        self.audio.im_het()
+
+    def _mo_nick(self, vao_sanh):
+        self._vao_sanh_sau = vao_sanh
+        self.dang_ky_moi = not bool(self.mang.nick)
+        self.loi_nhap = ""
+        self.o_dang = 0
+        self.trang_thai = NICK
+
+    def _mo_sanh(self):
+        if not self.mang.token:
+            self._mo_nick(True)
+            return
+        self.loi_phong = ""
+        self.trang_thai = SANH
+
+    def _menu_hanh(self, hanh):
+        if hanh == "don":
+            self.intro_trang = 0
+            self.intro_ky = 0.0
+            self.che_do_mang = False
+            self._dang_tran = False
+            self.trang_thai = COT_TRUYEN
+            self.audio.phat_doi_song(AM)
+        elif hanh == "nick":
+            self._mo_nick(False)
+        elif hanh == "mang":
+            self._mo_sanh()
+        elif hanh == "xuat":
+            if self.mang.token:
+                self.mang.ban("/api/dang-xuat", {"token": self.mang.token})
+            self.mang.xoa_phien()
+            self.phong = ""
+
+    def _gui_nick(self):
+        if not self.mang.ranh():
+            return
+        self._viec = "nhap"
+        path = "/api/dang-ky" if self.dang_ky_moi else "/api/dang-nhap"
+        self.mang.gui(path, {"nick": self.o_nhap[0].strip(), "mat_khau": self.o_nhap[1]})
+
+    def _roi_phong(self, ve_menu):
+        if self.mang.token and self.phong:
+            self.mang.ban("/api/phong/roi", {"token": self.mang.token})
+        self.phong = ""
+        self.ds_phong = []
+        self.la_chu = False
+        self._dung_tran()
+        self.trang_thai = MENU if ve_menu else SANH
+
+    def _bat_dau_van(self, kq):
+        self.che_do_mang = True
+        self._dang_tran = True
+        self.van = int(kq.get("van") or 0)
+        self.la_chu = bool(kq.get("la_chu"))
+        self.thu_tu = int(kq.get("thu_tu") or 0)
+        self.phong = kq.get("ma_phong") or self.phong
+        self.da_chet = False
+        self.ban_be.clear()
+        self.bang_chung = 0
+        self.ma_chung = []
+        self.cho_nhat = []
+        self.cho_mo = []
+        self._bat_cho = []
+        self._cc_may = False
+        self.cuong_che = False
+        lech = LECH_SPAWN[self.thu_tu % 4]
+        self.bat_dau_man(int(kq.get("man") or 1), seed=int(kq.get("seed") or 1), lech=lech)
+
+    def _ap_vat(self, vat):
+        for key, ai in vat.items():
+            try:
+                i = int(key)
+            except (TypeError, ValueError):
+                continue
+            if not 0 <= i < len(self.level.items):
+                continue
+            it = self.level.items[i]
+            if it.da_nhat:
+                continue
+            it.da_nhat = True
+            if ai == self.mang.nick:
+                self.audio.phat_nhat()
+                if it.loai == "battery":
+                    self.player.nap_pin(PIN_NHAT)
+                    self.bao("Pin +%d%%" % int(PIN_NHAT), 1.4)
+                elif it.loai == "cassette":
+                    self.bao("Đã nhặt băng  (%d/3)" % self.bang_chung, 1.6)
+                elif it.loai == "code" and it.gia_tri is not None:
+                    self.bao("Mật mã: %s" % it.gia_tri, 1.8)
+        self.cho_nhat = [m for m in self.cho_nhat if str(m.get("i")) not in vat]
+
+    def _ap_hop(self, hop):
+        for key, ai in hop.items():
+            try:
+                i = int(key)
+            except (TypeError, ValueError):
+                continue
+            if not 0 <= i < len(self.level.safes):
+                continue
+            sf = self.level.safes[i]
+            if sf.da_mo:
+                continue
+            sf.da_mo = True
+            if ai == self.mang.nick:
+                self.audio.phat_mo_hop()
+                self.bao("Hộp %d mở — băng chung %d/3" % (sf.ma, self.bang_chung), 1.8)
+        self.cho_mo = [m for m in self.cho_mo if str(m.get("i")) not in hop]
+
+    def _ap_nguoi(self, ds):
+        co = set()
+        chet = set()
+        for n in ds:
+            ten = n.get("nick")
+            if not ten:
+                continue
+            if not n.get("song", True):
+                chet.add(ten)
+            if ten == self.mang.nick:
+                if not n.get("song", True):
+                    self.chet()
+                continue
+            co.add(ten)
+            b = self.ban_be.get(ten)
+            if b is None:
+                b = Bong(ten, int(n.get("mau", 0)))
+                self.ban_be[ten] = b
+            b.ap_goi(n)
+        self._bat_cho = [t for t in self._bat_cho if t not in chet]
+        for ten in list(self.ban_be):
+            if ten not in co:
+                del self.ban_be[ten]
+
+    def _ap_quai(self, ds):
+        for i, s in enumerate(ds):
+            if i >= len(self.level.enemies):
+                break
+            e = self.level.enemies[i]
+            e._mx = float(s.get("x", e.x))
+            e._my = float(s.get("y", e.y))
+            tt = s.get("tt")
+            if tt in (Enemy.PATROL, Enemy.CHASE, Enemy.RUSH):
+                e.trang_thai = tt
+            try:
+                e.huong_x = 1 if int(s.get("hx", 1)) >= 0 else -1
+            except (TypeError, ValueError):
+                e.huong_x = 1
+            if not getattr(e, "_co", False):
+                e.x, e.y = e._mx, e._my
+                e._co = True
+
+    def _ap_trang_phong(self, kq):
+        self.phong = kq.get("ma_phong") or ""
+        self.la_chu = bool(kq.get("la_chu"))
+        self.ds_phong = kq.get("nguoi") or []
+        self.thu_tu = int(kq.get("thu_tu") or 0)
+        phase = kq.get("phase")
+        if phase == "hu":
+            self.loi_phong = "Chủ phòng đã thoát"
+            self._dung_tran()
+            self.phong = ""
+            self.ds_phong = []
+            self.trang_thai = SANH
+            if self.mang.token:
+                self.mang.ban("/api/phong/roi", {"token": self.mang.token})
+            return
+        if phase == "cho" and self._dang_tran:
+            self._dung_tran()
+            self.trang_thai = SANH
+            return
+        van = int(kq.get("van") or 0)
+        if phase == "choi" and van != self.van:
+            self._bat_dau_van(kq)
+            return
+        if not self._dang_tran or phase not in ("choi", "thang", "thua", "xong"):
+            return
+        self.bang_chung = int(kq.get("bang") or 0)
+        self.ma_chung = [int(m) for m in (kq.get("ma") or [])]
+        self._ap_vat(kq.get("vat") or {})
+        self._ap_hop(kq.get("hop") or {})
+        self._ap_nguoi(kq.get("nguoi") or [])
+        if not self.la_chu:
+            self._ap_quai(kq.get("quai") or [])
+            self._cc_may = bool(kq.get("cc"))
+            self.cuong_che_cd = float(kq.get("cd") or 0)
+            dung = bool(kq.get("dung"))
+            if self.trang_thai == CHOI and dung:
+                self.tam_dung_choi()
+            elif self.trang_thai == TAM_DUNG and not dung:
+                self.tiep_tuc_choi()
+        if phase == "thang" and self.trang_thai in (CHOI, TAM_DUNG):
+            self.audio.im_het()
+            self.trang_thai = THANG
+        elif phase == "xong" and self.trang_thai in (CHOI, TAM_DUNG, THANG):
+            self.audio.im_het()
+            self.trang_thai = CHIEN_THANG
+        elif phase == "thua" and self.trang_thai in (CHOI, TAM_DUNG):
+            self._chet_xong = THUA
+            if self.trang_thai == CHOI:
+                self.chet(ca_nhom=True)
+            else:
+                self.trang_thai = THUA
+
+    def _nhan_mang(self, kq):
+        viec = self._viec
+        if viec == "toi":
+            if kq.get("ok"):
+                self.mang.nick = kq.get("nick") or self.mang.nick
+            elif kq.get("loi") == "het phien":
+                self.mang.xoa_phien()
+            return
+        if viec == "nhap":
+            if kq.get("ok"):
+                self.mang.dat_phien(kq.get("nick") or "", kq.get("token") or "")
+                self.loi_nhap = ""
+                self.o_nhap = ["", ""]
+                self.loi_phong = ""
+                self.trang_thai = SANH if (self.dang_ky_moi or self._vao_sanh_sau) else MENU
+            else:
+                self.loi_nhap = kq.get("loi") or "Không được"
+            return
+        if not kq.get("ok"):
+            self.loi_phong = kq.get("loi") or "Lỗi mạng"
+            if kq.get("loi") == "het phien":
+                self.mang.xoa_phien()
+                self.phong = ""
+                self._dung_tran()
+                self.trang_thai = NICK
+            elif kq.get("loi") == "chua vao phong":
+                self.phong = ""
+                if self._dang_tran:
+                    self._dung_tran()
+                if self.trang_thai not in (MENU, NICK):
+                    self.trang_thai = SANH
+            return
+        if "phase" in kq:
+            self.loi_phong = ""
+            self._ap_trang_phong(kq)
+
+    def _gui_dong_bo(self):
+        p = self.player
+        body = {
+            "token": self.mang.token,
+            "x": round(p.x, 1),
+            "y": round(p.y, 1),
+            "ts": self.tan_so,
+            "hm": p.huong_mat,
+            "chay": bool(p.dang_chay),
+            "ren": bool(p.ron_ren),
+            "di": bool(p.bam_di_chuyen),
+            "pin": round(p.pin, 1),
+            "tl": round(p.the_luc, 1),
+            "so": round(p.so_hai, 1),
+            "tho": round(p.tho_gat_t, 2),
+            "vp": bool(self.vi_pham_cuong_che) and not self.da_chet,
+            "tram": (
+                not self.da_chet
+                and self.tan_so == FM
+                and self.bang_chung >= 3
+                and self.level.dang_o_tram(p)
+            ),
+            "nhat": self.cho_nhat[:8],
+            "mo": self.cho_mo[:4],
+        }
+        if self.la_chu:
+            body["quai"] = [
+                {
+                    "x": round(e.x, 1),
+                    "y": round(e.y, 1),
+                    "tt": e.trang_thai,
+                    "hx": e.huong_x,
+                }
+                for e in self.level.enemies
+            ]
+            body["cc"] = bool(self.cuong_che)
+            body["cd"] = round(self.cuong_che_cd, 2)
+            body["dung"] = self.trang_thai == TAM_DUNG
+            body["bat"] = list(self._bat_cho)
+        self._viec = "game"
+        self.mang.gui("/api/dong-bo", body)
+
+    def _gui_san(self):
+        self._viec = "san"
+        self.mang.gui("/api/phong/san", {"token": self.mang.token})
+
+    def _vong_mang(self, dt):
+        if not self._mang_san:
+            self.mang.chuan_bi()
+            self._mang_san = True
+            if self.mang.token:
+                self._viec = "toi"
+                self.mang.gui("/api/toi", {"token": self.mang.token})
+        self.mang.bom()
+        kq = self.mang.lay()
+        if kq:
+            self._nhan_mang(kq)
+        can_choi = self._dang_tran and self.trang_thai in (
+            CHOI, TAM_DUNG, THANG, THUA, CHIEN_THANG, JUMPSCARE,
+        )
+        can_san = self.trang_thai == SANH and bool(self.phong) and not self._dang_tran
+        if not (can_choi or can_san):
+            return
+        self._mang_t += dt
+        chu_ky = 0.11 if can_choi else 0.4
+        if self._mang_t < chu_ky or not self.mang.ranh():
+            return
+        self._mang_t = 0.0
+        if can_choi:
+            self._gui_dong_bo()
+        else:
+            self._gui_san()
+
+    def _phim_nick(self, ev):
+        k = ev.key
+        if k == pygame.K_ESCAPE:
+            self.trang_thai = MENU
+            return
+        if k == pygame.K_TAB:
+            self.o_dang = 1 - self.o_dang
+            return
+        if k == pygame.K_F2:
+            self.dang_ky_moi = not self.dang_ky_moi
+            self.loi_nhap = ""
+            return
+        if k in (pygame.K_RETURN, pygame.K_KP_ENTER):
+            self._gui_nick()
+            return
+        if k == pygame.K_BACKSPACE:
+            self.o_nhap[self.o_dang] = self.o_nhap[self.o_dang][:-1]
+            self.loi_nhap = ""
+            return
+        ch = ev.unicode or ""
+        if not ch.isprintable() or ch in "\r\n\t":
+            return
+        gioi = 16 if self.o_dang == 0 else 32
+        if self.o_dang == 0 and not (ch.isalnum() or ch in "_-"):
+            return
+        if len(self.o_nhap[self.o_dang]) < gioi:
+            self.o_nhap[self.o_dang] += ch
+            self.loi_nhap = ""
+
+    def _phim_sanh(self, ev):
+        k = ev.key
+        if not self.phong:
+            if k == pygame.K_ESCAPE:
+                self.trang_thai = MENU
+            elif k == pygame.K_F1:
+                self._sanh_hanh("tao")
+            elif k in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                if len(self.ma_nhap) == 4:
+                    self._sanh_hanh("vao")
+                else:
+                    self.loi_phong = "Mã phòng 4 ký tự"
+            elif k == pygame.K_BACKSPACE:
+                self.ma_nhap = self.ma_nhap[:-1]
+            else:
+                ch = (ev.unicode or "").upper()
+                if len(self.ma_nhap) < 4 and ch.isalnum():
+                    self.ma_nhap += ch
+                    self.loi_phong = ""
+            return
+        if k == pygame.K_ESCAPE:
+            self._roi_phong(False)
+        elif k in (pygame.K_RETURN, pygame.K_KP_ENTER):
+            self._sanh_hanh("bat")
+
+    def _sanh_hanh(self, hanh):
+        if not self.mang.token:
+            self._mo_nick(True)
+            return
+        if not self.mang.ranh() and hanh in ("tao", "vao", "bat"):
+            return
+        if hanh == "tao":
+            self._viec = "tao"
+            self.mang.gui("/api/phong/tao", {"token": self.mang.token})
+        elif hanh == "vao":
+            self._viec = "vao"
+            self.mang.gui("/api/phong/vao", {"token": self.mang.token, "ma": self.ma_nhap})
+        elif hanh == "bat":
+            if self.la_chu:
+                self._viec = "bat"
+                self.mang.gui("/api/phong/bat-dau", {"token": self.mang.token})
+        elif hanh == "esc":
+            self.trang_thai = MENU
+        elif hanh == "roi":
+            self._roi_phong(False)
+
+    def _chu_tiep(self):
+        if not self.la_chu:
+            return
+        if not self.mang.ranh():
+            return
+        self._viec = "tiep"
+        self.mang.gui("/api/phong/tiep", {"token": self.mang.token})
+
+    def _pause_phim(self):
+        if self.che_do_mang and not self.la_chu:
+            self.bao("Chỉ chủ phòng tạm dừng được", 1.2)
+            return
+        if self.trang_thai == TAM_DUNG:
+            self.tiep_tuc_choi()
+        else:
+            self.tam_dung_choi()
+
     def xu_ly_phim(self, su_kien):
         if su_kien.type == pygame.MOUSEBUTTONDOWN and su_kien.button == 1:
+            pos = su_kien.pos
             if self.trang_thai == CHOI:
-                if self.ui.rect_nut_pause.collidepoint(su_kien.pos):
-                    self.tam_dung_choi()
+                if self.ui.rect_nut_pause.collidepoint(pos):
+                    self._pause_phim()
             elif self.trang_thai == TAM_DUNG:
-                self.tiep_tuc_choi()
+                if not (self.che_do_mang and not self.la_chu):
+                    self.tiep_tuc_choi()
+            elif self.trang_thai == MENU:
+                for r, hanh in getattr(self.ui, "nut_menu", []):
+                    if r.collidepoint(pos):
+                        self._menu_hanh(hanh)
+                        break
+            elif self.trang_thai == NICK:
+                for r, hanh in getattr(self.ui, "nut_nick", []):
+                    if r.collidepoint(pos):
+                        if hanh == "gui":
+                            self._gui_nick()
+                        elif hanh == "doi":
+                            self.dang_ky_moi = not self.dang_ky_moi
+                        elif hanh == "esc":
+                            self.trang_thai = MENU
+                        break
+            elif self.trang_thai == SANH:
+                for r, hanh in getattr(self.ui, "nut_sanh", []):
+                    if r.collidepoint(pos):
+                        self._sanh_hanh(hanh)
+                        break
             return
         if su_kien.type != pygame.KEYDOWN:
             return
         k = su_kien.key
         if self.trang_thai == MENU:
             if k in (pygame.K_RETURN, pygame.K_SPACE):
-                self.intro_trang = 0
-                self.intro_ky = 0.0
-                self.trang_thai = COT_TRUYEN
-                self.audio.phat_doi_song(AM)
+                self._menu_hanh("don")
+            elif k == pygame.K_t:
+                self._menu_hanh("nick")
+            elif k == pygame.K_n:
+                self._menu_hanh("mang")
+            elif k == pygame.K_x and self.mang.nick:
+                self._menu_hanh("xuat")
             elif k == pygame.K_ESCAPE:
                 self.chay = False
+        elif self.trang_thai == NICK:
+            self._phim_nick(su_kien)
+        elif self.trang_thai == SANH:
+            self._phim_sanh(su_kien)
         elif self.trang_thai == COT_TRUYEN:
             than = TRANG_TRUYEN[self.intro_trang][1]
             if k == pygame.K_ESCAPE:
@@ -2519,11 +3517,13 @@ class Game:
                     self.bat_dau_man(1)
         elif self.trang_thai == CHOI:
             if k == pygame.K_p:
-                self.tam_dung_choi()
-            elif k == pygame.K_SPACE:
+                self._pause_phim()
+            elif k == pygame.K_SPACE and not self.da_chet:
                 self.doi_tan_so(bat_buoc=False)
-            elif k == pygame.K_e:
-                if self.tan_so == AM:
+            elif k == pygame.K_e and not self.da_chet:
+                if self.che_do_mang:
+                    self._xin_mo_hop()
+                elif self.tan_so == AM:
                     da_xu_ly = False
                     for sf in self.level.safes:
                         kq = sf.thu_mo(self.player)
@@ -2542,29 +3542,53 @@ class Game:
                     if not da_xu_ly and self.level.safes:
                         self.bao("Đứng sát hộp rồi nhấn E", 1.4)
             elif k == pygame.K_ESCAPE:
-                self.audio.im_het()
-                self.trang_thai = MENU
+                if self.che_do_mang:
+                    self._roi_phong(True)
+                else:
+                    self.audio.im_het()
+                    self.trang_thai = MENU
         elif self.trang_thai == TAM_DUNG:
             if k in (pygame.K_p, pygame.K_RETURN, pygame.K_SPACE):
-                self.tiep_tuc_choi()
+                self._pause_phim()
             elif k == pygame.K_ESCAPE:
-                self.audio.im_het()
-                self.trang_thai = MENU
+                if self.che_do_mang:
+                    self._roi_phong(True)
+                else:
+                    self.audio.im_het()
+                    self.trang_thai = MENU
         elif self.trang_thai == THANG:
             if k in (pygame.K_RETURN, pygame.K_SPACE):
-                self.bat_dau_man(self.level.so + 1)
+                if self.che_do_mang:
+                    self._chu_tiep()
+                else:
+                    self.bat_dau_man(self.level.so + 1)
             elif k == pygame.K_ESCAPE:
-                self.trang_thai = MENU
+                if self.che_do_mang:
+                    self._roi_phong(True)
+                else:
+                    self.trang_thai = MENU
         elif self.trang_thai == CHIEN_THANG:
             if k in (pygame.K_RETURN, pygame.K_SPACE):
-                self.trang_thai = MENU
+                if self.che_do_mang:
+                    self._chu_tiep()
+                else:
+                    self.trang_thai = MENU
             elif k == pygame.K_ESCAPE:
-                self.chay = False
+                if self.che_do_mang:
+                    self._roi_phong(True)
+                else:
+                    self.chay = False
         elif self.trang_thai == THUA:
             if k == pygame.K_r:
-                self.bat_dau_man(self.level.so)
+                if self.che_do_mang:
+                    self._chu_tiep()
+                else:
+                    self.bat_dau_man(self.level.so)
             elif k == pygame.K_ESCAPE:
-                self.trang_thai = MENU
+                if self.che_do_mang:
+                    self._roi_phong(True)
+                else:
+                    self.trang_thai = MENU
 
     async def chay_game(self):
         print("Tần Số Trắng — đang chạy. Đóng cửa sổ hoặc ESC để thoát.")
@@ -2581,10 +3605,21 @@ class Game:
                     self.xu_ly_phim(ev)
 
             keys = pygame.key.get_pressed()
+            self._vong_mang(dt)
 
             if self.trang_thai == MENU:
                 self.audio.cap_nhat_the_gioi(FM)
-                self.ui.ve_menu(self.man, dt)
+                self.ui.ve_menu(self.man, dt, nick=self.mang.nick)
+            elif self.trang_thai == NICK:
+                self.ui.ve_nick(
+                    self.man, dt, self.o_nhap[0], self.o_nhap[1],
+                    self.o_dang, self.dang_ky_moi, self.loi_nhap,
+                )
+            elif self.trang_thai == SANH:
+                self.ui.ve_sanh(
+                    self.man, dt, self.mang.nick, self.phong, self.ds_phong,
+                    self.la_chu, self.ma_nhap, self.loi_phong,
+                )
             elif self.trang_thai == COT_TRUYEN:
                 self.audio.cap_nhat_the_gioi(AM)
                 self.audio.dat_am_luong_tinh(0.22)
@@ -2604,13 +3639,19 @@ class Game:
                 self.jumpscare_t += dt
                 self.ui.ve_jumpscare(self.man, min(1.0, self.jumpscare_t / 1.12))
                 if self.jumpscare_t >= 1.12:
-                    self.trang_thai = THUA
+                    self.trang_thai = self._chet_xong
             elif self.trang_thai == THANG:
-                self.ui.ve_thang(self.man, self.level, da_xong_het=False)
+                if self.che_do_mang:
+                    self.ui.ve_thang_mang(self.man, self.level, self.la_chu)
+                else:
+                    self.ui.ve_thang(self.man, self.level, da_xong_het=False)
             elif self.trang_thai == CHIEN_THANG:
-                self.ui.ve_chien_thang(self.man)
+                if self.che_do_mang:
+                    self.ui.ve_chien_thang_mang(self.man, self.la_chu)
+                else:
+                    self.ui.ve_chien_thang(self.man)
             elif self.trang_thai == THUA:
-                self.ui.ve_thua(self.man)
+                self.ui.ve_thua(self.man, mang=self.che_do_mang, la_chu=self.la_chu)
 
             pygame.display.flip()
             await asyncio.sleep(0)
