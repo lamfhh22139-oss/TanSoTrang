@@ -178,6 +178,7 @@ def _nguoi_moi(nick):
         "so": 0.0,
         "tho": 0.0,
         "vp": False,
+        "san": False,
     }
 
 
@@ -224,6 +225,7 @@ def _trang(room, nick):
             "so": round(p["so"], 1),
             "tho": round(p["tho"], 2),
             "vp": bool(p["vp"]),
+            "san": bool(p.get("san")),
         })
     try:
         thu_tu = thu.index(nick)
@@ -385,6 +387,8 @@ def api(path, body):
             return _roi(nick)
         if path == "/api/phong/san":
             return _san(nick)
+        if path == "/api/phong/san-sang":
+            return _san_sang(nick)
         if path == "/api/phong/bat-dau":
             return _bat_dau(nick)
         if path == "/api/phong/tiep":
@@ -512,6 +516,18 @@ def _san(nick):
     return _trang(room, nick)
 
 
+def _san_sang(nick):
+    room = _tim_phong(nick)
+    if not room:
+        return _loi("chua vao phong")
+    if room["phase"] != "cho":
+        return _loi("Phòng đã bắt đầu")
+    p = room["nguoi"][nick]
+    p["san"] = not bool(p.get("san"))
+    p["thay"] = time.time()
+    return _trang(room, nick)
+
+
 def _bat_dau(nick):
     room = _tim_phong(nick)
     if not room:
@@ -522,6 +538,8 @@ def _bat_dau(nick):
         return _loi("Phòng không ở sảnh")
     if len(room["nguoi"]) < 1:
         return _loi("Phòng trống")
+    if not all(p.get("san") for p in room["nguoi"].values()):
+        return _loi("Chưa sẵn sàng hết")
     seed = secrets.randbelow(2_000_000_000) + 1
     _reset_van(room, 1, seed, doi_seed=False)
     room["seed"] = seed
@@ -544,6 +562,8 @@ def _tiep(nick):
         room["cc"] = False
         room["cd"] = 0.0
         room["dung"] = False
+        for p in room["nguoi"].values():
+            p["san"] = False
     else:
         return _loi("Chưa xong màn")
     return _trang(room, nick)

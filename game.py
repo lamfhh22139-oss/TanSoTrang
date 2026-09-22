@@ -2191,25 +2191,52 @@ class UI:
             blit_tam(man, self.f_to.render(chu, True, (240, 240, 245)), RONG // 2, 222)
             nut("F1  —  TẠO PHÒNG MỚI", 300, "tao", (80, 255, 140))
             nut("ESC  —  menu", 360, "esc", (150, 150, 155))
+            if loi:
+                blit_tam(man, self.f_vua.render(loi, True, (255, 90, 80)), RONG // 2, 560)
         else:
             blit_tam(man, self.f_nho.render("Mã phòng — gửi cho bạn", True, (160, 160, 165)), RONG // 2, 150)
             blit_tam(man, self.f_tieu.render(phong, True, (255, 220, 120)), RONG // 2, 196)
-            y = 250
+            het = bool(ds) and all(ng.get("san") for ng in ds)
+            minh = False
+            for ng in ds:
+                if ng.get("nick") == nick:
+                    minh = bool(ng.get("san"))
+            y = 248
             for i, ng in enumerate(ds):
                 mau = MAU_DONG_DOI[int(ng.get("mau", i)) % 4]
                 ten = ng.get("nick", "?")
                 if ng.get("la_chu"):
                     ten += "  (chủ)"
+                trang = "SẴN SÀNG" if ng.get("san") else "chờ"
+                mau_trang = (80, 255, 140) if ng.get("san") else (140, 140, 145)
                 s = self.f_vua.render("%d.  %s" % (i + 1, ten), True, mau)
-                man.blit(s, (RONG // 2 - 140, y))
+                man.blit(s, (RONG // 2 - 220, y))
+                st = self.f_nho.render(trang, True, mau_trang)
+                man.blit(st, (RONG // 2 + 80, y + 2))
                 y += 28
-            if la_chu:
-                nut("ENTER  —  BẮT ĐẦU", 470, "bat", (80, 255, 140))
-            else:
-                blit_tam(man, self.f_dam.render("Chờ chủ phòng bắt đầu", True, (200, 200, 120)), RONG // 2, 470)
-            nut("ESC  —  rời phòng", 520, "roi", (160, 160, 165))
-        if loi:
-            blit_tam(man, self.f_vua.render(loi, True, (255, 90, 80)), RONG // 2, 560)
+            so_san = sum(1 for ng in ds if ng.get("san"))
+            blit_tam(
+                man,
+                self.f_nho.render("Sẵn sàng  %d / %d" % (so_san, len(ds)), True, (180, 180, 175)),
+                RONG // 2, 400,
+            )
+            nut("HỦY SẴN SÀNG" if minh else "SẴN SÀNG", 432, "san", (230, 210, 120) if not minh else (180, 180, 170))
+            mau_start = (80, 255, 140) if (la_chu and het) else (90, 90, 98)
+            chu_start = self.f_to.render("START", True, mau_start)
+            rs = chu_start.get_rect(center=(RONG // 2, 488))
+            rs.inflate_ip(48, 16)
+            self.nut_sanh.append((rs, "bat"))
+            hover = rs.collidepoint(pygame.mouse.get_pos())
+            pygame.draw.rect(man, (20, 46, 30) if (la_chu and het) else (22, 22, 26), rs)
+            pygame.draw.rect(man, (255, 255, 255) if hover else mau_start, rs, 2)
+            man.blit(chu_start, chu_start.get_rect(center=(RONG // 2, 488)))
+            if loi:
+                blit_tam(man, self.f_nho.render(loi, True, (255, 90, 80)), RONG // 2, 530)
+            elif la_chu and not het:
+                blit_tam(man, self.f_nho.render("START mở khi mọi người sẵn sàng", True, (150, 150, 145)), RONG // 2, 530)
+            elif not la_chu:
+                blit_tam(man, self.f_nho.render("Chủ phòng bấm START khi đủ người", True, (160, 160, 150)), RONG // 2, 530)
+            nut("ESC  —  rời phòng", 562, "roi", (160, 160, 165))
         man.blit(self.vignette, (0, 0))
 
     def ve_cot_truyen(self, man, dt, so_trang, so_ky, n_trang):
@@ -3413,14 +3440,14 @@ class Game:
             return
         if k == pygame.K_ESCAPE:
             self._roi_phong(False)
-        elif k in (pygame.K_RETURN, pygame.K_KP_ENTER):
-            self._sanh_hanh("bat")
+        elif k == pygame.K_s:
+            self._sanh_hanh("san")
 
     def _sanh_hanh(self, hanh):
         if not self.mang.token:
             self._mo_nick(True)
             return
-        if not self.mang.ranh() and hanh in ("tao", "vao", "bat"):
+        if not self.mang.ranh() and hanh in ("tao", "vao", "bat", "san"):
             return
         if hanh == "tao":
             self._viec = "tao"
@@ -3428,10 +3455,18 @@ class Game:
         elif hanh == "vao":
             self._viec = "vao"
             self.mang.gui("/api/phong/vao", {"token": self.mang.token, "ma": self.ma_nhap})
+        elif hanh == "san":
+            self._viec = "san_sang"
+            self.mang.gui("/api/phong/san-sang", {"token": self.mang.token})
         elif hanh == "bat":
-            if self.la_chu:
-                self._viec = "bat"
-                self.mang.gui("/api/phong/bat-dau", {"token": self.mang.token})
+            if not self.la_chu:
+                self.loi_phong = "Chủ phòng bấm START"
+                return
+            if not self.ds_phong or not all(n.get("san") for n in self.ds_phong):
+                self.loi_phong = "Chưa sẵn sàng hết"
+                return
+            self._viec = "bat"
+            self.mang.gui("/api/phong/bat-dau", {"token": self.mang.token})
         elif hanh == "esc":
             self.trang_thai = MENU
         elif hanh == "roi":

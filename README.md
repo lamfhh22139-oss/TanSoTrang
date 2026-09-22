@@ -36,7 +36,7 @@ Bản trình duyệt dùng cùng `game.py` (đóng gói pygbag). Mở link, **b�
 
 ## Nick và nhiều người
 
-Trên menu: **T** tạo nick (3–16 ký tự) và mật khẩu, **F2** đổi giữa tạo nick và đăng nhập. **N** vào sảnh: **F1** tạo phòng (mã 4 ký tự) hoặc gõ mã rồi **ENTER** để vào. Tối đa 4 người, chơi chung một mê cung.
+Trên menu: **T** tạo nick (3–16 ký tự) và mật khẩu, **F2** đổi giữa tạo nick và đăng nhập. **N** vào sảnh: **F1** tạo phòng (mã 4 ký tự) hoặc gõ mã rồi **ENTER** để vào. Tối đa 4 người. Trong phòng mỗi người bấm **SẴN SÀNG** (hoặc phím **S**). Khi đủ người, chủ phòng bấm chữ **START** thì ván mới bắt đầu.
 
 - Thấy đồng đội cùng tần số; người ở tần số kia hiện bóng mờ.
 - Băng cassette, mật mã và hộp an toàn dùng chung. Pin và thể lực của từng người.
